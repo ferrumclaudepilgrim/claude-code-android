@@ -16,9 +16,12 @@ jobs:
       - name: Check internal Markdown links
         uses: lycheeverse/lychee-action@v2
         with:
+          # CHANGELOG 2.0.0 retains this historical path, removed in 2.9.5.
+          # Keep checking every other changelog link.
           args: >-
             --offline
             --no-progress
+            --exclude '^file:///.*/docs/adb-wireless\.md$'
             "**/*.md"
           fail: true
 
@@ -34,8 +37,11 @@ jobs:
       - name: Check external Markdown links
         uses: lycheeverse/lychee-action@v2
         with:
+          # CHANGELOG 2.0.0 retains this historical path, removed in 2.9.5.
+          # Keep checking every other changelog link.
           args: >-
             --no-progress
+            --exclude '^file:///.*/docs/adb-wireless\.md$'
             --max-concurrency 4
             --user-agent "Mozilla/5.0 (compatible; lychee-action; +https://github.com/lycheeverse/lychee-action)"
             "**/*.md"

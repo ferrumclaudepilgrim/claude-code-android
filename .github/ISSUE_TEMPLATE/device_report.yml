@@ -15,6 +15,14 @@ body:
     validations:
       required: true
   - type: input
+    id: hardware-model-identifier
+    attributes:
+      label: Hardware model identifier (optional)
+      description: The exact model number from Android Settings or `getprop ro.product.model`, when available.
+      placeholder: e.g. SM-G930P, SM-S918U, GFE4J
+    validations:
+      required: false
+  - type: input
     id: android-version
     attributes:
       label: Android version
@@ -33,7 +41,7 @@ body:
     id: paths-tested
     attributes:
       label: Which path(s) tested
-      description: "Check every path you ran on this device. The three install paths are defined in the README: https://github.com/ferrumclaudepilgrim/claude-code-android#quick-install"
+      description: "Check every path you ran on this device. The three install paths are defined in the README: https://github.com/ferrumclaudepilgrim/claude-code-android#choose-an-install-path"
       options:
         - label: A - native Termux (bare claude)
         - label: B - proot-distro Ubuntu
@@ -73,8 +81,8 @@ body:
   - type: input
     id: node-version
     attributes:
-      label: Node.js version (Path B or pinned installs only)
-      description: Output of `node -v`. Leave blank on native Path A, which ships no Node.
+      label: Node.js version (if used)
+      description: Output of `node -v` for pinned 2.1.112, or if you added Node for your own tools. Otherwise leave blank.
     validations:
       required: false
   - type: input
@@ -95,6 +103,14 @@ body:
         - Fails to run
     validations:
       required: true
+  - type: textarea
+    id: evidence-log
+    attributes:
+      label: Evidence or log attachment (optional)
+      description: Drag in a redacted screenshot or log, or paste a link to a `verify-claims.sh` / device-runner artifact. Remove tokens, account names, project paths, notifications, and other private phone data first.
+      placeholder: Attach a file or paste a link and briefly say what it demonstrates.
+    validations:
+      required: false
   - type: textarea
     id: notes
     attributes:

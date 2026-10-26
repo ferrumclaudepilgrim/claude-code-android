@@ -1,137 +1,125 @@
 # FAQ
 
-Claude Code is Anthropic's terminal-based coding assistant: you run it from a command line and it reads, edits, and runs code in your project for you. This page covers common questions and gotchas for running it on Android.
-
-This repo offers three install methods, referred to throughout as Path A, Path B, and Path C. See [Choosing a path](#choosing-a-path) below for what each one is.
-
-Two different version numbers come up here. This repo has its own version (currently 2.9.x); Claude Code, the tool it installs, has its own separate version (currently 2.1.x). They are unrelated numbering schemes.
-
----
+Start with what you see on the phone. These short answers point to the procedure to follow; you do not need to read every guide first.
 
 ## Installation
 
-### "Unsafe app blocked" when installing the Termux APK
+<a id="unsafe-app-blocked-when-installing-the-termux-apk"></a>
 
-Termux is a terminal-emulator app for Android. Its APK is distributed through F-Droid, an open-source Android app store.
+### Why does Android say “Unsafe app blocked” when I install Termux?
 
-On Android 11 and newer, Google Play Protect flags the F-Droid Termux APK (which targets SDK 28) as "built for an older version of Android." This is a Play Protect warning about the SDK target level, not a malware flag. The APK is signed by Termux's maintainers; in my testing it installs and runs without issues.
+**Pause and check where the APK came from.** Compare the download with the official Termux sources, then read the warning's details. A familiar filename or an option to continue does not prove an APK is safe. If you cannot establish the source, stop and download from an official source instead.
 
-To proceed:
+Follow [What to do if Android blocks the Termux APK](install.md#if-android-blocks-the-termux-apk). Keep Termux and its companion apps from the same source so their signatures match.
 
-1. Tap **More details** in the dialog
-2. Tap **Install anyway**
+<a id="installsh-hangs-or-fails-with-failed-to-fetch"></a>
 
-Or install Termux through the F-Droid app instead of side-loading the APK directly. The F-Droid app handles this dialog inline.
+### Why is install.sh stuck or showing “Failed to fetch”?
 
-### install.sh hangs or fails with "Failed to fetch"
+**Check the network, then try another Termux package mirror with `termux-change-repo`.** Package download failures often come from an unavailable mirror. A failure downloading Claude itself can have a different cause; note the URL and error before retrying.
 
-Termux's `pkg` (the package manager, a wrapper around apt with automatic mirror selection) picks a mirror automatically from a list of about 18 candidates worldwide. The picker is weighted by reachability, but the result is non-deterministic: a fresh Termux on the same device can pick different mirrors on different days. Some mirrors are slow or temporarily unreachable from your network, which can hang `pkg update` or `pkg install` for 10+ minutes before erroring out.
+Use [Termux package download failures](troubleshooting.md#termux-package-download-hangs-or-says-failed-to-fetch) for the steps, then rerun the installer once the package source works.
 
-If you see "Failed to fetch" errors or `pkg update` hangs, change the mirror:
+<a id="yinodz-prompt-during-pkg-upgrade"></a>
 
-```bash
-termux-change-repo
-```
+### Termux is asking Y/I/N/O/D/Z. What should I choose?
 
-Pick a different mirror (the menu shows region groupings). Re-run install.sh after the new mirror is set.
+**Choose `N` or `O` to keep a configuration you already use; choose `D` if you want to compare it first.** `Y` or `I` replaces it with the package maintainer's version. `Z` opens a shell for inspection.
 
-### "Y/I/N/O/D/Z" prompt during `pkg upgrade`
-
-When Termux upgrades a package whose config file was locally modified, apt asks what to do:
-
-```
-Configuration file '/path/to/config'
- ==> Modified (by you or by a script) since installation.
- ==> Package distributor has shipped an updated version.
-*** filename (Y/I/N/O/D/Z) [default=N] ?
-```
-
-What the letters mean:
-
-- **Y** or **I**: install the package maintainer's new version (overwrites your local changes)
-- **N** or **O**: keep your old (current) version (this is the default)
-- **D**: show the diff between your version and the new one
-- **Z**: drop to a shell so you can investigate before deciding
-
-You only need one letter. (Optional detail: there are two letters per choice because `Y/N` is the common convention and `I/O`, for "Install" / "Old", is the older dpkg convention. Both still work.)
-
-To handle this non-interactively and keep all local config files unchanged:
-
-```bash
-DEBIAN_FRONTEND=noninteractive pkg upgrade -y -o Dpkg::Options::="--force-confold"
-```
+The prompt means an installed configuration file differs from the package's copy. On a genuinely fresh Termux install, the maintainer's version is a reasonable starting point. The installer's fresh/existing question chooses its configuration policy; see [the two installer questions](install.md#step-1-run-installsh).
 
 ### Which packages should I install after `install.sh`?
 
-`install.sh` installs what is needed to run claude itself: `curl`, `jq`, `glibc-repo`, `glibc-runner`, `patchelf-glibc`, and the patched linux-arm64 claude binary. It does NOT install `nodejs`; the binary is self-contained. If you answer yes to the recommended-packages prompt, it also installs git, gh, wget, jq, python, openssh, tree, proot, termux-api, proot-distro, make, clang, file, xxd, htop, bat, and fzf. If you say no to that prompt, vanilla Termux still gives you `unzip`, `tar`, `gzip`, `less`, and `nano` from its bootstrap, but Claude Code typically reaches for the recommended-packages set as well. See **[Recommended Common Packages](install.md#recommended-common-packages)** in install.md for the canonical list.
+**Start with the packages the installer supplies; add tools when your project needs them.** Its optional common-tool set includes Git, Python, compilers, and the Termux:API command package. Installing that command package does not install its Android companion or grant new permissions, but existing companion permissions may already be usable.
 
-### Which install do I have: pinned or the native v2.9.x setup?
+The manual list leaves Termux:API out; the current installer bundle still includes it. For an explicit choice, answer No to the bundle and add only the tools you need. See [Recommended Common Packages](install.md#recommended-common-packages) list and [optional Android builder guides](add-ons/README.md#build-with-android).
 
-`claude --version` will not tell you: it reports Claude Code's own version (the 2.1.x number), which is the same on both. Check what is on disk instead:
+<a id="which-install-do-i-have-pinned-or-the-native-v29x-setup"></a>
 
-```bash
-if [ -d "$PREFIX/lib/node_modules/@anthropic-ai/claude-code" ]; then
-  echo "pinned install (Claude Code 2.1.112 via npm)"
-elif ls "$HOME/.local/share/claude/versions/"*.*.* >/dev/null 2>&1; then
-  echo "native Path A install (the v2.9.x auto-updating wrapper)"
-else
-  echo "no recognized claude install found here"
-fi
-```
+### How can I tell which setup I already have?
 
-If you are on the pinned install and want current claude, see [I set up Path A with an older version of this repo](#i-set-up-path-a-with-an-older-version-of-this-repo-how-do-i-move-to-v290).
+**Run the disk check in [Which setup am I on?](troubleshooting.md#which-setup-am-i-on).** Use ordinary Termux for that Path A check; Path B runs inside Ubuntu and Path C inside Android's Linux Terminal.
 
----
+`claude --version` reports Anthropic's version, so it cannot identify this repository's launcher or pinned setup. Check before reinstalling or migrating.
 
-## Choosing a path
+## Choosing a Path
 
-### Which path should I use?
+<a id="which-path-should-i-use"></a>
 
-| If you want | Pick |
-|---|---|
-| The smallest install, latest claude, auto-updates | Path A (native Termux) |
-| A full Ubuntu environment alongside Claude Code | Path B (proot-distro Ubuntu, ~2 GB rootfs) |
-| A real Linux kernel via Android's hypervisor (Pixel 6+ on Android 16+) | Path C (AVF, Android Virtualization Framework) |
+### Which installation path should I use?
 
-All three paths install the latest claude. Path A's wrapper auto-checks once per 24 hours on launch (`claude --update-now` forces immediate). Paths B and C use Anthropic's official installer inside their Linux environments and update through that mechanism.
+**Start with Path A on a newer ARM64 phone; on Android 8–10, use the pinned fallback or Path B.** Path B supplies Ubuntu inside Termux. Path C is an experimental Debian VM available only when your Android build exposes it.
+
+Compare the tradeoffs in [Choose your path](install.md#choose-your-path), then [check the evidence for your phone](device-compatibility.md). Android version alone does not establish compatibility.
 
 ### Can I run Path C (AVF) on my Samsung, OnePlus, or Snapdragon phone?
 
-Probably not on stock firmware. Path C needs Android's Virtualization Framework exposed as a non-protected VM, and Snapdragon devices on stock firmware only expose protected VMs at EL2, so the Terminal app cannot use them. The quick test: look for Settings > System > Developer options > **Linux development environment**. If that toggle is there, your device supports Path C; if it is missing, it does not.
+**Look for “Linux development environment” in Developer options.** If it is absent, choose Path A or B. The Android build decides availability; the chipset name or “Pixel 6 or newer” is not sufficient evidence.
 
-Samsung's One UI 8.5 added Linux Terminal support on the Exynos Galaxy S26 and S26+, per Samsung's release notes. I do not own one, so I have not lab-verified it. The Snapdragon Galaxy S26 Ultra stays unsupported. See [avf-guide.md](avf-guide.md#device-requirements) for the full device picture.
+See [AVF device requirements](avf-guide.md#device-requirements) and the dated [device observations](device-compatibility.md).
 
 ### Why does Path A need patchelf and glibc-runner?
 
-You do not need to understand any of this to use Path A; the installer does it all for you. The detail is here for the curious.
+**Use the Path A installer to set these up together.** It adapts Anthropic's Linux ARM64 binary to Termux's different runtime libraries. The program runs on the phone, but the compatibility layer is not official Android support.
 
-Anthropic distributes Claude Code as a glibc-linked Linux binary (as of v2.1.113; the upstream tracking issue is linked below). Termux runs on Android's Bionic C library, not glibc, so the binary cannot run as-is. Path A installs Termux's `glibc-runner` package (a Termux package that provides a glibc-compatible dynamic linker, `ld.so`, for running glibc binaries in Bionic-based environments) and uses `patchelf-glibc` (a Termux-packaged patchelf utility for modifying ELF (Executable and Linkable Format) binary metadata) to rewrite the binary's ELF interpreter (the field in the binary that names which dynamic linker to use) to point at that `ld.so`. The kernel can then exec the binary normally. Path B sidesteps this by running claude inside a proot-distro Ubuntu environment where glibc is already standard.
+The [Path A guide](install.md#path-a-native-termux) explains the binary patch, launcher, and DNS tradeoff.
 
-Tracked upstream at [anthropics/claude-code#50270](https://github.com/anthropics/claude-code/issues/50270). The patched-binary approach was originally described in [a comment on the upstream issue](https://github.com/anthropics/claude-code/issues/50270#issuecomment-4467292215). This repo's install.sh adapts it with empirical verification, an auto-updating wrapper, and the two interactive prompts.
+<a id="i-set-up-path-a-with-an-older-version-of-this-repo-how-do-i-move-to-v290"></a>
 
-### I set up Path A with an older version of this repo. How do I move to v2.9.0?
+### I have an older pinned install. Should I migrate?
 
-Use the migration script. It moves a pinned Path A install (Claude Code `2.1.112`, with the auto-updater off) to the v2.9.0 auto-updating architecture without touching your chats, your login, or your settings. It backs everything up first, and it verifies the new binary on disk before removing the old one, so a failure partway leaves your existing install usable.
+**Check your phone's evidence before migrating.** The older lab phones still needed pinned Claude Code `2.1.112`. On a compatible phone, follow [Upgrading from a pinned v2.x install](install.md#upgrading-from-a-pinned-v2x-install), which backs up state before replacing the install.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/ferrumclaudepilgrim/claude-code-android/main/migrate.sh -o migrate.sh
-bash migrate.sh
-```
+A migration is different from a routine launcher refresh. Keep the backup and its restore instructions until you have confirmed your own setup works.
 
-Close any running `claude` sessions before you start; the script refuses to run while one is active. The full list of what it preserves is in **[Upgrading from a pinned install](install.md#upgrading-from-a-pinned-v2x-install)**.
+## OAuth and Browsers
+
+<a id="claude-prints-a-url-but-my-browser-doesnt-open"></a>
+
+### Why didn't the Claude sign-in page open?
+
+**Copy the sign-in URL from your terminal into the phone's browser, finish signing in, then return to the terminal.** Automatic browser launch varies by Android version and install path. Keep sign-in URLs and codes private.
+
+If it still fails, use [OAuth / authentication fails on first launch](troubleshooting.md#oauth--authentication-fails-on-first-launch) for the next checks.
+
+### Do MCP OAuth callbacks work on Android?
+
+**Use the authentication instructions for your MCP server and install path.** A browser login may need to return to a temporary localhost listener; routing between the browser, Termux, Ubuntu, or a VM can vary.
+
+Start with [sign-in troubleshooting](troubleshooting.md#oauth--authentication-fails-on-first-launch). Review the server's scopes and credentials separately using [MCP, OAuth, web, and shell networking](security-model.md#mcp-oauth-web-and-shell-networking).
+
+## Versions and Updates
+
+### Why do I see two unrelated 2.x numbers?
+
+**Use the repository version for launcher documentation and `claude --version` for Anthropic's release.** They identify different things and do not need to match. [Two version numbers](device-compatibility.md#two-version-numbers) explains how to read older evidence.
+
+<a id="how-does-path-a-update"></a>
+
+### How do I update without losing my setup?
+
+**Identify your path, then follow its maintenance section.** Native Path A checks for updates on launch, normally once per day; `claude --update-now` asks for a check now. Refreshing the launcher and migrating an older pinned install are separate actions. Path B and Path C use Anthropic's updater inside their Linux environment.
+
+Use [Path A updates](install.md#updating-claude-code-path-a), [Path B maintenance](install.md#update-path-b), or [Path C maintenance](install.md#update-path-c). Back up important projects before changing an installation; cached versions and migration backups are useful recovery aids, not a guarantee against data loss.
+
+## Phone Access and Security
+
+<a id="does-installing-this-grant-access-to-my-sms-camera-or-the-rest-of-android"></a>
+
+### Does installing this give Claude access to my photos, messages, or camera?
+
+**Review the access Termux and its companion apps already have.** The installer does not grant Android permissions, enable shared storage or ADB, or add MCP servers. It can install Termux:API's command package if you accept the common tools. With an already configured companion app, existing grants may make those commands usable.
+
+Claude can use files and commands reachable through its allowed tools. Photos in shared storage, permission-backed API features, and ADB are different routes. Read [Understand access and trust](security-model.md) before enabling them; ordinary coding does not require them.
+
+<a id="do-the-ssrf-and-fingerprint-examples-make-the-setup-sandboxed"></a>
+
+### Do the optional security hooks make my phone sandboxed?
+
+**Treat them as narrow, optional checks.** The SSRF hook covers recognized URL strings in selected web tools; the fingerprint example matches certain Bash command strings. Neither contains arbitrary shell programs, MCP traffic, or every way to reach files and the network.
+
+Read [Optional controls and their limits](security-model.md#optional-controls-and-their-limits). Instructions in an agent prompt are different from tool permissions, and both differ from an operating-system sandbox.
 
 ---
 
-## OAuth and browsers
-
-OAuth is the browser-based login flow Claude Code uses to authenticate with Anthropic.
-
-### Claude prints a URL but my browser doesn't open
-
-On Android 8 (and possibly 9), copy the URL from the terminal and open it in your phone's browser (Chrome or Samsung Internet) manually. Sign in there; claude in the terminal picks up the auth state once you complete the flow. This happens whether you are on Path A (native Termux) or Path B (proot-distro Ubuntu).
-
-This is a host-Android intent-resolution limitation, not a claude bug. In my testing, the browser auto-opened on Android 10, 13, and 17 devices but not on Android 8, so the manual paste is only needed on the older versions.
-
----
-
-*Last updated: 2026-07-01.*
+Documentation reviewed: 2026-10-25. No new device tests were performed for this revision.

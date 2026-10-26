@@ -1,138 +1,102 @@
 # Security Model: Claude Code on Android
 
-This document describes what Termux:API permissions and ADB wireless debugging expose when used with Claude Code on Android. It is written for anyone considering granting these capabilities, developer or not. Read this before enabling Termux:API permissions or ADB wireless debugging.
+Running a coding agent on a personal phone puts a powerful shell next to personal files, accounts, sensors, and developer bridges. Keep the environment smaller than the task.
 
-**Terms used here:**
+> [!TIP]
+> **Start here:** coding needs neither phone permissions nor ADB. The short map below tells you what extra access changes. The rest is reference for when you add it.
 
-- **Termux** is a terminal app that runs a Linux command-line environment on Android.
-- **Termux:API** is a companion app that lets Termux command-line tools reach Android features such as SMS, GPS, and the camera.
-- **ADB (Android Debug Bridge)** is Android's developer tool for sending commands to a device. Wireless debugging lets it connect over WiFi instead of over a USB cable.
-- **MCP (Model Context Protocol)** is a standard that lets external servers provide extra tools and data to Claude Code.
-- **SSRF (server-side request forgery)** is an attack that tricks a tool into making network requests to internal addresses it should not reach.
-- **Hook** is a script Claude Code runs automatically at a set point, such as a PreToolUse hook that runs before a tool call.
-- **Headless** means running Claude Code from a script or a single command (`claude -p`) rather than in a live interactive session.
+[Install](install.md) · [Optional add-ons](add-ons/README.md) · [ADB setup](add-ons/adb-wireless.md)
 
-The three install methods are called Path A, Path B, and Path C. See the [README](../README.md#quick-install) for what each one is.
+## Trust Boundaries at a Glance
 
----
+| Surface | What becomes reachable | Your choice |
+|---|---|---|
+| **Termux shell and files** | Projects, shell config, credentials, and network programs available to the Termux app identity | Keep project scope narrow; inspect consequential tool calls. |
+| **Shared storage** | Android files exposed through a storage grant | Add only when needed; copy a single required file instead of exposing a collection where practical. |
+| **Termux:API** | Permission-backed phone features | Install deliberately and grant only the needed permissions. |
+| **ADB** | Selected system services, screen/input controls, settings, and diagnostics | Separate debug identity; pair only for tasks that need it. |
+| **MCP, web, and shell networking** | Remote services and data entering or leaving the agent's context | Review each channel, its operator, and its access. |
+| **Path A's DNS helper** | Runtime resolver queries default to Google DNS | Check the tradeoff if you depend on private or VPN-provided DNS. |
+
+`install.sh` does not grant Android permissions, enable shared storage/ADB, configure MCP, or install optional hooks. **Its current recommended-tool bundle does include the Termux:API command package.** That does not install the companion app or grant permissions, but an existing companion's grants may already be usable. For a deliberate manual choice, see [optional API setup](install.md#termuxapi-explicit-optional-setup).
+
+## Ordinary Termux Filesystem and Shell Access
+
+Processes in Termux share its Android app identity. Claude can reach files and commands permitted by its tools: projects, shell startup files, tokens, SSH material, and other Termux data may be beside one another.
+
+Android's app sandbox still restricts access to other apps' private data. Ordinary Termux is not root. Filesystem permissions, SELinux, and service policy differ by Android/OEM build; not every system command is available. See the [Termux execution environment](https://github.com/termux/termux-packages/wiki/Termux-execution-environment).
+
+Claude Code permissions add checks inside Claude. Current Read/Edit rules also cover recognized shell file commands and redirections, but not every indirect access by Python or another subprocess. **This repository does not enable an OS sandbox by default.**
+
+## Shared-Storage Exposure
+
+`termux-setup-storage` requests Android storage access and creates links under `~/storage`. What becomes visible depends on the Android release and grants. Photos, downloads, documents, or backups may be included.
+
+This is separate from installing Claude. Revoking a permission stops future access; it does not undo copies already made or data already sent.
 
 ## What Termux:API Permissions Expose
 
-When you grant a permission to the Termux:API companion app, every process running inside Termux can access that data type. There is no per-session or per-tool scoping. Once a permission is granted, it stays granted for all Termux processes until you revoke it in Android Settings.
+Termux:API needs a command package plus a companion Android app signed for the same Termux source. Its permissions belong to that companion, not one Claude session.
 
-| Data Type | Command | Permission Gate | What This Means |
-|-----------|---------|-----------------|-----------------|
-| SMS (read and send) | `termux-sms-list`, `termux-sms-send` | SMS permission | Any Termux process can read your text messages and send new ones |
-| Contacts | `termux-contact-list` | Contacts permission | Full contact list accessible from Termux |
-| Call log | `termux-call-log` | Call log permission | Incoming and outgoing call history readable |
-| GPS location | `termux-location` | Location permission | Real-time device coordinates available |
-| Camera | `termux-camera-photo` | Camera permission | Can take photos without the camera app open |
-| Microphone | `termux-microphone-record` | Microphone permission | Can record audio in the background |
-| Clipboard | `termux-clipboard-get`, `termux-clipboard-set` | None (pre-Android 13) | Clipboard contents readable and writable without a permission prompt on Android versions before 13. On Android 13 and later, the system limits background clipboard access and notifies you when the clipboard is read |
-| Notifications | `termux-notification-list` | Notification access | Can read notification content from all apps |
-| Sensors | `termux-sensor` | None | Accelerometer, gyroscope, barometer, magnetometer, and other hardware sensors accessible |
-| Fingerprint | `termux-fingerprint` | Biometrics | Triggers the biometric prompt (does not read fingerprint data) |
-| Phone dialing | `termux-telephony-call` | Phone permission | Can initiate outgoing calls |
-| Text-to-speech | `termux-tts-speak` | None | Can speak text aloud through the device speaker |
+Depending on Android permissions and device support, commands can expose location, SMS, contacts, call history, camera, microphone, clipboard, notifications, sensors, and biometric prompts. Any process in the Termux environment can attempt the granted commands. Android may still deny a feature or impose background restrictions.
 
----
+Claude Code itself does not require this integration. Revoke grants you no longer need. **Termux:API is not ADB**; disabling one does not disable the other.
 
 ## What ADB Adds
 
-ADB wireless debugging runs commands as Android's `shell` user, a system-level debug identity that is more privileged than any app. These capabilities do not require any Termux:API permissions.
+`adb shell` uses Android's separate `shell` debug identity. It can access selected system services that ordinary Termux cannot: package inspection, some logs/settings, screen capture, and input control. It is not root; SELinux, secure windows, provider permissions, and OEM policy still apply.
 
-| Capability | Command | Impact |
-|-----------|---------|--------|
-| Screenshot any app | `adb shell screencap` | Captures whatever is on screen, including banking apps, password managers, and private conversations |
-| Screen recording | `adb shell screenrecord` | Continuous video capture of the display |
-| Touch and key injection | `adb shell input tap/swipe/text` | Can tap buttons, type text, and navigate any app autonomously |
-| Launch or stop any app | `adb shell am start/force-stop` | Can open banking apps, authenticators, email, or any installed application |
-| SMS via content provider | `adb shell content query --uri content://sms` | Reads SMS messages through a different access path than Termux:API |
-| Contacts via content provider | `adb shell content query --uri content://com.android.contacts/contacts` | Reads contacts through a different access path than Termux:API |
-| System settings | `adb shell settings get/put` | Can read and modify device configuration (brightness, DND, etc.) |
-| Full process list | `adb shell ps -A` | Lists every running process on the device |
-| System logs | `adb logcat` | May contain authentication tokens, URLs, and debug data from other apps |
-| Installed apps | `adb shell pm list packages` | Complete list of every app installed on the device |
-| Hardware sensors | `adb shell dumpsys sensorservice` | Full hardware sensor inventory |
-| Device properties | `adb shell getprop` | Hardware identifiers, build info, carrier info |
+Wireless debugging opens a network listener and uses pairing keys. Pair on a trusted network, then disable it when finished. A compromised paired client remains a risk. Developer options alone do not enable ADB. Follow [ADB setup and limits](add-ons/adb-wireless.md) when you need it.
 
----
+<a id="path-a-forces-google-dns-for-claude-codes-own-lookups"></a>
 
-## ADB Bypasses Termux:API Permission Denials
+## Path A's DNS Resolver Default
 
-This is the critical point most users miss. If you deny SMS permission to the Termux:API companion app, `termux-sms-list` correctly fails. But `adb shell content query --uri content://sms` still works, because ADB operates as the `shell` user, not as the Termux app. Android's per-app permission model does not apply to ADB commands. Denying a permission in Android Settings blocks the app-level path but leaves the ADB path open. These are two completely different access levels using two different privilege models.
+Path A preloads `~/.local/share/claude/setdns.js` through `BUN_OPTIONS`. Its default is:
 
----
+```javascript
+require("dns").setServers(["8.8.8.8", "8.8.4.4"])
+```
 
-## Threat Scenarios
+This works around an observed connectivity hang. It changes a resolver in Claude's bundled runtime, not Android's system DNS. Paths B/C do not use it; an existing nonempty helper is retained and can differ.
 
-**Can the agent read my text messages?**
-Yes, if you granted SMS permission to Termux:API (`termux-sms-list`) or if ADB is connected (`adb shell content query --uri content://sms`). This includes 2FA codes delivered via SMS.
+**Queries using that resolver go to Google instead of your configured private resolver.** This does not prove every network lookup uses it or that packets bypass a VPN tunnel. Node's [DNS reference](https://nodejs.org/api/dns.html#dnssetserversservers) distinguishes `resolve`/`reverse` from `lookup`; this repo's runner checks `dns.resolve4`, not every network path. Changing servers is possible, but an unreachable replacement can bring the hang back. See [DNS troubleshooting](troubleshooting.md#claude-hangs-on-checking-connectivity--etimeout--api-error-on-every-message).
 
-**Can it screenshot my banking app?**
-Only with ADB connected. `adb shell screencap` captures whatever is currently on screen. If a banking app is in the foreground, the screenshot includes it.
+## Path A Download Trust and Startup Probes
 
-**Can it operate my phone autonomously?**
-With ADB connected, yes. `adb shell am start` opens any app, and `adb shell input tap/swipe/text` navigates it. Combined, these can open an app, tap buttons, enter text, and interact with the UI without the user touching the screen.
+Path A downloads the binary and checksum manifest from Anthropic, verifies the hash, then patches the binary. This catches transfer corruption, not a compromised source serving both files. You also trust this repository's installer and launcher.
 
-**Can it send data to an external server?**
-By default, Claude Code has access to `curl`, `wget`, and other network tools through the Bash tool. The SSRF guard (the optional PreToolUse hook documented in `docs/ssrf-guard.md`, which blocks WebFetch and WebSearch requests to internal IPs) does not intercept Bash-level network commands. There is no outbound data boundary by default.
+The wrapper's `--init-only` probe checks startup, not all features. A temporary HOME does not guarantee isolation: the working directory and variables such as `CLAUDE_CONFIG_DIR` remain inherited. Current upstream docs say this mode can run Setup and SessionStart hooks. Do not treat the probe as a sandbox. [CLI reference](https://code.claude.com/docs/en/cli-reference) · [Settings](https://code.claude.com/docs/en/settings).
 
-**Can a malicious MCP server access my data?**
-MCP servers receive tool responses from Claude Code. If Claude Code has access to contacts, SMS, or location data, that data can appear in tool responses sent to any connected MCP server. The SSRF guard does not intercept MCP data flow.
+## MCP, OAuth, Web, and Shell Networking
 
-**Can a malicious file trick the agent into exfiltrating data?**
-Prompt injection (where a file contains instructions that redirect the agent's behavior) is a known risk with all LLM-based tools. The risk is non-zero. A file could attempt to instruct the agent to send data to an external URL.
+These are independent channels:
 
----
+- **Local MCP:** another process with the files and environment available to its launch identity.
+- **Remote MCP:** requests and tool data go to that server; review its operator and OAuth scopes.
+- **OAuth:** browser sign-in may return to a temporary localhost listener. Termux, Ubuntu, and VM routing can differ.
+- **Web tools:** WebFetch/WebSearch have their own permissions and hook behavior.
+- **Bash:** curl, Git, SSH, package managers, runtimes, and custom programs can reach the network independently.
 
-## Existing Mitigations
+Filtering one channel does not filter the others. This repository provides no general outbound data boundary.
 
-| Mitigation | What It Covers | What It Does Not Cover |
-|-----------|---------------|----------------------|
-| **SSRF guard** ([docs](ssrf-guard.md)) | Blocks WebFetch and WebSearch requests to private/reserved IP ranges and non-HTTP schemes | Does not block Bash-level `curl`/`wget`, does not intercept MCP data flow, does not prevent DNS rebinding |
-| **Fingerprint gate** ([docs](fingerprint-gate.md)) | Requires biometric approval before sensitive operations (git push, destructive commands by default) | Only gates operations you configure it for. Does not block Termux:API or ADB commands by default |
-| **CLAUDE.md constitution** ([template](constitution-template.md)) | Defines behavioral rules the model follows: scope boundaries, forbidden actions, confirmation requirements | Model-enforced, not technically enforced. The model can be instructed to ignore it via prompt injection |
-| **Claude's safety training** | Anthropic's safety training makes the model resist harmful instructions | Not a technical control. Effective in most cases but not absolute |
-| **Agent permissions matrix** ([docs](agent-permissions.md)) | Documents the principle that no agent should hold both web access and write access, and configures per-agent `tools`/`disallowedTools` restrictions that Claude Code enforces at runtime | The split-by-role principle is a design choice you have to apply; once configured, the per-agent tool restrictions are runtime-enforced, but nothing forces you to design the roles that way in the first place |
+## Optional Controls and Their Limits
 
----
+| Control | Helps with | Does not establish |
+|---|---|---|
+| [Agent permissions](add-ons/agent-permissions.md) | Separate responsibilities and narrow available tools | A role name or prompt does not enforce file/network scope. |
+| [SSRF guard](add-ons/ssrf-guard.md) | Selected literal URL patterns | No DNS, redirect-chain, Bash, or MCP enforcement. |
+| [Fingerprint gate](add-ons/fingerprint-gate.md) | Biometric confirmation for matched Bash strings | No coverage of unmatched forms, other tools, or all hook failures. |
+| [Project instructions (`CLAUDE.md`)](add-ons/project-instructions.md) | Record your environment, scope, and preferences | Instructions are not runtime permission enforcement. |
 
-## What's Not Covered
-
-These gaps exist by default in the current setup:
-
-- **No Termux:API command restriction.** Once a permission is granted, every Termux process can use it. There is no way to allow Claude Code to use the camera but deny it SMS access at the Termux level. This must be done in Android's permission settings for the Termux:API app.
-- **No ADB command restriction.** Once ADB is connected, the full set of `adb shell` commands is available. There is no built-in way to allow screencap but deny input injection.
-- **No outbound data exfiltration boundary.** Claude Code can run `curl`, `wget`, or any network command via the Bash tool. There is no default firewall or egress filter preventing data from being sent to external servers.
-- **No MCP data boundary.** Data flowing to MCP servers is not filtered or restricted. Any data Claude Code can access may appear in MCP tool responses.
-- **No session-level tool scoping for interactive use.** The `--tools` and `--disallowedTools` flags work for headless (`claude -p`) sessions, but interactive sessions have no runtime tool restriction beyond hooks.
-
----
-
-## Path A Forces Google DNS for Claude Code's Own Lookups
-
-On Path A (native Termux), the launcher writes a small preload at `~/.local/share/claude/setdns.js` and loads it on every launch via `BUN_OPTIONS --preload`. It calls `dns.setServers(["8.8.8.8", "8.8.4.4"])`, pointing Claude Code's own DNS lookups at Google's public resolvers. This works around a startup hang where Claude Code's bundled resolver falls back to a dead loopback address and times out (see [Troubleshooting](troubleshooting.md#claude-hangs-on-checking-connectivity--etimeout--api-error-on-every-message)).
-
-What this means for you: while Claude Code is running, its name lookups go to `8.8.8.8` / `8.8.4.4` rather than to a VPN, split-tunnel, or Pi-hole resolver you may have configured. For Claude Code's own queries, this overrides that resolver. The rest of your phone keeps using its normal DNS; only Claude Code's lookups are affected, and only on Path A. Paths B and C do not use this preload.
-
-To send Claude Code's lookups to your own nameserver instead, edit the `setServers([...])` list in `~/.local/share/claude/setdns.js`.
-
----
+The hook examples are optional and need integration/failure testing. Current Claude Code has [sandbox controls](https://code.claude.com/docs/en/sandboxing), but verify support on your Android path before claiming an OS boundary. The [permissions reference](https://code.claude.com/docs/en/permissions) is authoritative for your installed release.
 
 ## Recommended Setup for Minimal Risk
 
-1. **Start without ADB.** Path A, Path B, and Path C all work fully without ADB wireless debugging. Only enable ADB when you specifically need screenshot, input injection, or system query capabilities.
-2. **Deny unnecessary Termux:API permissions.** Go to Android Settings and deny SMS, Contacts, Call Log, Camera, Microphone, and Location for the Termux:API app unless your workflow requires them. Claude Code works normally without any of these.
-3. **Install the SSRF guard.** It blocks the most common SSRF vector (WebFetch and WebSearch to internal IPs). See [SSRF Guard](ssrf-guard.md).
-4. **Install the fingerprint gate.** Configure it to require biometric approval for operations you consider sensitive. See [Fingerprint Gate](fingerprint-gate.md).
-5. **Extend the fingerprint gate** to cover Termux:API commands (`termux-sms-*`, `termux-contact-*`, `termux-location`, `termux-camera-*`) and ADB commands (`adb shell`) if you use them.
-6. **Write a CLAUDE.md constitution.** Define explicit rules for what the agent may and may not do. See the [Constitution Template](constitution-template.md).
-7. **Sandbox headless sessions.** If you run `claude -p` from cron or scripts, use `--tools` and `--disallowedTools` to restrict available capabilities. See the [install guide](install.md) cron section.
-8. **Do not install untrusted MCP servers.** MCP servers receive data from Claude Code's tool responses. Only connect servers you trust.
-9. **Disconnect ADB when not using it.** Toggle off Wireless Debugging in Developer Options.
-10. **Never use ADB wireless debugging on public WiFi.** The debugging daemon listens on a network-accessible port. Any device on the same network can attempt to pair.
+1. Start with a dedicated project in ordinary Termux; add access when a task needs it.
+2. Keep storage grants, API permissions, ADB, and MCP as separate choices.
+3. Read consequential commands and their targets before approval. External pages, repositories, and tool responses can contain prompt injection.
+4. Avoid unattended jobs combining sensitive phone access with broad networking.
+5. Keep recoverable backups outside the agent's writable scope.
 
----
-
-Last updated: 2026-07-01.
+Documentation reviewed: 2026-10-25. No new device or sandbox verification was performed.

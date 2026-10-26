@@ -6,7 +6,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for filing this. The more of the environment fields you can fill in, the faster I can work out what is going on. If a field does not apply to your install path, leave it blank. If you are not sure which install path you used, see the [Quick Install](https://github.com/ferrumclaudepilgrim/claude-code-android/blob/main/README.md#quick-install) section.
+        Thanks for filing this. The more of the environment fields you can fill in, the faster I can work out what is going on. If a field does not apply to your install path, leave it blank. If you are not sure which install path you used, see the [Choose an install path](https://github.com/ferrumclaudepilgrim/claude-code-android/blob/main/README.md#choose-an-install-path) section.
+
+        Run commands in the environment where Claude Code failed: ordinary Termux for Path A, inside Ubuntu for Path B, or inside the Linux development environment for Path C. Before posting output, remove tokens, email addresses, usernames, project paths, local IP addresses, pairing codes, notification contents, and other personal data. Never post credentials, SSH keys, or a complete environment dump.
   - type: input
     id: device
     attributes:
@@ -33,7 +35,7 @@ body:
     id: install-path
     attributes:
       label: Install path
-      description: Which of the three paths were you running when it broke? The paths are defined in the README [Quick Install](https://github.com/ferrumclaudepilgrim/claude-code-android/blob/main/README.md#quick-install) section. Pick "I'm not sure" if you do not know.
+      description: Which of the three paths were you running when it broke? The paths are defined in the README [Choose an install path](https://github.com/ferrumclaudepilgrim/claude-code-android/blob/main/README.md#choose-an-install-path) section. Pick "I'm not sure" if you do not know.
       options:
         - A - native Termux
         - B - proot-distro Ubuntu
@@ -81,8 +83,8 @@ body:
   - type: input
     id: node-version
     attributes:
-      label: Node.js version (Path B or pinned installs only)
-      description: Output of `node -v`. Leave blank on native Path A, which ships no Node.
+      label: Node.js version (if used)
+      description: Output of `node -v` for pinned 2.1.112, or if you added Node for your own tools. Otherwise leave blank.
     validations:
       required: false
   - type: input
@@ -90,6 +92,34 @@ body:
     attributes:
       label: glibc-runner version (Path A only)
       description: Output of `apt list --installed | grep glibc-runner`
+    validations:
+      required: false
+  - type: textarea
+    id: environment-diagnostics
+    attributes:
+      label: Environment diagnostics
+      description: Run only the block for your install path. Remove personal data before posting. If a command fails, include that error too.
+      placeholder: |
+        Path A, in ordinary Termux:
+          termux-info
+          uname -a
+          command -v claude
+          apt list --installed 2>/dev/null | grep -E 'glibc-runner|patchelf-glibc'
+
+        Path B, first in ordinary Termux:
+          termux-info
+          uname -a
+        Then inside proot Ubuntu:
+          cat /etc/os-release
+          uname -a
+          command -v claude
+          claude --version
+
+        Path C, inside the Linux development environment:
+          cat /etc/os-release
+          uname -a
+          command -v claude
+          claude --version
     validations:
       required: false
   - type: textarea

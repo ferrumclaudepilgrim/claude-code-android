@@ -10,8 +10,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install ShellCheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Install test dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq shellcheck
 
       - name: Check shell syntax
         run: bash -n install.sh install-pinned.sh migrate.sh tests/*.sh scripts/*.sh examples/*.sh
@@ -21,6 +21,9 @@ jobs:
 
       - name: Check install.sh / migrate.sh sync
         run: bash scripts/check-sync.sh
+
+      - name: Check repository metadata consistency
+        run: bash scripts/check-metadata.sh
 
       - name: Test generated wrapper
         run: bash tests/wrapper-update-tests.sh

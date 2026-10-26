@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
-# verify-claims.sh: Verifies every technical claim this repo's docs make against
-# the device you run it on. Non-destructive. Safe to re-run.
+# verify-claims.sh: Runs selected device evidence checks. It is not a
+# comprehensive verification of every repository claim. Safe to re-run, but it
+# replaces this device's result artifact under tests/results/.
 #
 # Every test produces one of three verdicts:
 #   PASS   the claim is empirically true on this device
 #   FAIL   the claim is empirically false on this device
 #   SKIP   precondition not met (e.g., optional package not installed)
 #
-# This claim set was written against the v2.x install architecture (pinned
-# 2.1.112 npm install). On a v2.9.0 install (patched linux-arm64 binary +
-# auto-updating wrapper), CLAIM 1 (vendor/ripgrep/arm64-android inspection)
-# legitimately SKIPs because the v2.9.0 install does not put claude at the
-# v2.x path the test inspects. A v2.9.0-shaped claim set is a follow-up item.
+# Some checks target the optional pinned v2.x fallback and explicitly SKIP
+# when that architecture is not installed.
 #
 # Usage: bash tests/verify-claims.sh
 # Results: stdout + tests/results/<device>-android<version>.txt
@@ -38,9 +36,11 @@ ANDROID_VER="${ANDROID_VER:-unknown}"
 
 # --- Paths ---
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 RESULTS_DIR="${SCRIPT_DIR}/results"
-mkdir -p "$RESULTS_DIR"
+if ! mkdir -p "$RESULTS_DIR"; then
+    printf 'HARNESS_ERROR: cannot create results directory: %s\n' "$RESULTS_DIR" >&2
+    exit 2
+fi
 RESULTS_FILE="${RESULTS_DIR}/${DEVICE_MODEL}-android${ANDROID_VER}.txt"
 
 # --- Counters ---
@@ -88,7 +88,10 @@ verdict_skip() {
 }
 
 # Reset results file and tee everything to it
-: > "$RESULTS_FILE"
+: > "$RESULTS_FILE" || {
+    printf 'HARNESS_ERROR: cannot write results artifact: %s\n' "$RESULTS_FILE" >&2
+    exit 2
+}
 exec > >(tee "$RESULTS_FILE") 2>&1
 
 print_header
@@ -236,38 +239,14 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────
-# CLAIM 7: docs/ssrf-guard.md exists in this repo
-# Source: this repo
 # ──────────────────────────────────────────────────────────────
-print_claim 7 "docs/ssrf-guard.md exists and is non-empty in this repo"
-SSRF_DOC="$REPO_ROOT/docs/ssrf-guard.md"
-if [ -s "$SSRF_DOC" ]; then
-    LINES=$(wc -l < "$SSRF_DOC")
-    echo "  docs/ssrf-guard.md: $LINES lines"
-    verdict_pass
-else
-    verdict_fail "docs/ssrf-guard.md missing or empty (looked at $SSRF_DOC)"
-fi
-
 # ──────────────────────────────────────────────────────────────
-# CLAIM 8: docs/agent-permissions.md exists in this repo
-# Source: this repo
 # ──────────────────────────────────────────────────────────────
-print_claim 8 "docs/agent-permissions.md exists and is non-empty in this repo"
-AP_DOC="$REPO_ROOT/docs/agent-permissions.md"
-if [ -s "$AP_DOC" ]; then
-    LINES=$(wc -l < "$AP_DOC")
-    echo "  docs/agent-permissions.md: $LINES lines"
-    verdict_pass
-else
-    verdict_fail "docs/agent-permissions.md missing or empty (looked at $AP_DOC)"
-fi
-
 # ──────────────────────────────────────────────────────────────
-# CLAIM 9: Termux:API returns valid JSON for battery status
+# CLAIM 7: Termux:API returns valid JSON for battery status
 # Source: docs/adb-wireless.md, docs/constitution-template.md
 # ──────────────────────────────────────────────────────────────
-print_claim 9 "termux-battery-status returns valid JSON (Termux:API companion working)"
+print_claim 7 "termux-battery-status returns valid JSON (Termux:API companion working)"
 echo "  Test:  Run termux-battery-status with 8s timeout; expect JSON with 'percentage'"
 
 if [ -z "$(command -v termux-battery-status 2>/dev/null)" ]; then
@@ -284,11 +263,11 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────
-# CLAIM 10: xdg-open is a symlink to termux-open
+# CLAIM 8: xdg-open is a symlink to termux-open
 # Source: termux-tools package (provides the xdg-open shim); browser-launch
 #         context in docs/troubleshooting.md (OAuth section)
 # ──────────────────────────────────────────────────────────────
-print_claim 10 "xdg-open is a symlink to termux-open (OAuth/browser-launch compatibility)"
+print_claim 8 "xdg-open is a symlink to termux-open (OAuth/browser-launch compatibility)"
 XDG="$PREFIX/bin/xdg-open"
 if [ ! -e "$XDG" ]; then
     verdict_skip "xdg-open not present at $XDG (termux-tools package not installed)"
@@ -305,10 +284,10 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────
-# CLAIM 11: termux-fingerprint is on PATH for biometric auth
+# CLAIM 9: termux-fingerprint is on PATH for biometric auth
 # Source: docs/fingerprint-gate.md
 # ──────────────────────────────────────────────────────────────
-print_claim 11 "termux-fingerprint is available on PATH for biometric authentication"
+print_claim 9 "termux-fingerprint is available on PATH for biometric authentication"
 FP="$(command -v termux-fingerprint 2>/dev/null)"
 if [ -n "$FP" ]; then
     echo "  Found: $FP"
@@ -318,10 +297,10 @@ else
 fi
 
 # ──────────────────────────────────────────────────────────────
-# CLAIM 12: Device architecture is aarch64
+# CLAIM 10: Device architecture is aarch64
 # Source: README, docs/install.md, docs/troubleshooting.md
 # ──────────────────────────────────────────────────────────────
-print_claim 12 "Device architecture is aarch64 (Claude Code requirement)"
+print_claim 10 "Device architecture is aarch64 (Claude Code requirement)"
 ARCH="$(uname -m 2>/dev/null || echo 'unknown')"
 echo "  uname -m: $ARCH"
 if [ "$ARCH" = "aarch64" ]; then
@@ -349,3 +328,6 @@ echo "  FAIL: claim empirically does not hold on this device. Either the device 
 echo "         from the doc's assumptions, or the doc is wrong. Submit a device report."
 echo "  SKIP: precondition not met (e.g., optional package not installed, companion app"
 echo "         not running). Re-run after installing the relevant package to test."
+
+[ "$FAIL_N" -eq 0 ] || exit 1
+exit 0

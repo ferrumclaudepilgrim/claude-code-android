@@ -92,8 +92,9 @@ ok "Claude Code installed: $CLAUDE_VER"
 # not redirect the search on 2.1.112 (the bundle still spawns the missing vendored
 # path); the symlink is what works. $CC_DIR is still writable here, before the pin
 # lock below. This is the same fix as scripts/fix-ripgrep.sh, run at install time.
+FIX_RG_URL="https://raw.githubusercontent.com/ferrumclaudepilgrim/claude-code-android/main/scripts/fix-ripgrep.sh"
 info "wiring Claude Code's Grep tool to system ripgrep"
-apt-get install $APT_OPTS ripgrep >/dev/null || warn "ripgrep install failed; run scripts/fix-ripgrep.sh later to enable Grep/Glob"
+apt-get install $APT_OPTS ripgrep >/dev/null || warn "ripgrep install failed; to enable Grep/Glob later, run: curl -fsSL $FIX_RG_URL -o fix-ripgrep.sh && bash fix-ripgrep.sh"
 RG_BIN="$(command -v rg || true)"
 if [ -n "$RG_BIN" ]; then
   VENDOR_RG="$CC_DIR/vendor/ripgrep/arm64-android"
@@ -101,7 +102,7 @@ if [ -n "$RG_BIN" ]; then
   ln -sf "$RG_BIN" "$VENDOR_RG/rg"
   ok "Grep tool wired to system ripgrep ($RG_BIN)"
 else
-  warn "ripgrep not found after install; run scripts/fix-ripgrep.sh to enable Grep/Glob"
+  warn "ripgrep not found after install; to enable Grep/Glob, run: curl -fsSL $FIX_RG_URL -o fix-ripgrep.sh && bash fix-ripgrep.sh"
 fi
 
 # --- Lock the pin against the in-process auto-updater (three layers) ---

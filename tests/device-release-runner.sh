@@ -4,6 +4,9 @@
 #
 # Usage: bash device-release-runner.sh MODE DEVICE_SERIAL
 # MODE: pixel-refresh | pixel-concurrency | migration-abort | fresh-gate
+# Exit: 0 = no FAIL, 1 = one or more tested checks FAIL, 2 = HARNESS_ERROR.
+# PASS/FAIL/SKIP/HARNESS_ERROR are recorded in the TSV. The .done marker means
+# execution completed and is not a success verdict.
 
 set -u
 
@@ -21,9 +24,17 @@ RUN_ID="${MODE}-${DEVICE}"
 TRANSCRIPT="$OUT_DIR/$RUN_ID.txt"
 RESULTS="$OUT_DIR/$RUN_ID.tsv"
 WORK="$HOME/.cache/claude-code-android-matrix"
-mkdir -p "$OUT_DIR" "$WORK"
-: > "$TRANSCRIPT"
-printf 'check_id\tdevice\tandroid_version\texpected\tactual\tverdict\n' > "$RESULTS"
+if ! mkdir -p "$OUT_DIR" "$WORK"; then
+  printf 'HARNESS_ERROR: cannot create output/work directories\n' >&2
+  exit 2
+fi
+: > "$TRANSCRIPT" || { printf 'HARNESS_ERROR: cannot write transcript\n' >&2; exit 2; }
+printf 'check_id\tdevice\tandroid_version\texpected\tactual\tverdict\n' > "$RESULTS" || {
+  printf 'HARNESS_ERROR: cannot write results\n' >&2
+  exit 2
+}
+FAIL_N=0
+HARNESS_ERROR_N=0
 exec > >(tee -a "$TRANSCRIPT") 2>&1
 
 clean_field() {
@@ -36,10 +47,12 @@ record() {
     "$(clean_field "$check_id")" "$(clean_field "$DEVICE")" \
     "$(clean_field "$ANDROID")" "$(clean_field "$expected")" \
     "$(clean_field "$actual")" "$verdict" >> "$RESULTS"
+  [ "$verdict" = "FAIL" ] && FAIL_N=$((FAIL_N + 1))
+  [ "$verdict" = "HARNESS_ERROR" ] && HARNESS_ERROR_N=$((HARNESS_ERROR_N + 1))
 }
 
 not_run() {
-  record "$1" "$2" "$3" "NOT RUN"
+  record "$1" "$2" "$3" "SKIP"
 }
 
 file_hash() {
@@ -259,7 +272,7 @@ case "$MODE" in
     ;;
 esac
 if [ -n "$missing_scripts" ]; then
-  record runner_preflight "required staged scripts exist" "missing: $missing_scripts" FAIL
+  record runner_preflight "required staged scripts exist" "missing: $missing_scripts" HARNESS_ERROR
   case "$MODE" in
     pixel-refresh)
       for id in refresh_classified refresh_no_download identity_preserved version_no_eacces relative_preload dns_lookup update_check; do
@@ -282,8 +295,8 @@ if [ -n "$missing_scripts" ]; then
       ;;
   esac
   echo "DONE $RUN_ID $(date -Is)"
-  touch "$OUT_DIR/$RUN_ID.done"
-  exit 0
+  touch "$OUT_DIR/$RUN_ID.done" || exit 2
+  exit 2
 fi
 record runner_preflight "required staged scripts exist" "present" PASS
 case "$MODE" in
@@ -293,4 +306,13 @@ case "$MODE" in
   fresh-gate) run_fresh_gate ;;
 esac
 echo "DONE $RUN_ID $(date -Is)"
-touch "$OUT_DIR/$RUN_ID.done"
+if ! touch "$OUT_DIR/$RUN_ID.done"; then
+  printf 'HARNESS_ERROR: cannot write completion marker\n' >&2
+  exit 2
+fi
+if [ "$HARNESS_ERROR_N" -gt 0 ]; then
+  exit 2
+elif [ "$FAIL_N" -gt 0 ]; then
+  exit 1
+fi
+exit 0

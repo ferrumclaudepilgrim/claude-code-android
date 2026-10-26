@@ -22,9 +22,8 @@ A typo, a broken link, or a device report can go straight to a PR or an issue. A
 I would rather say this plainly than decline your PR after the fact. These are more likely to be turned down, so let's talk in an issue first:
 
 - Large feature additions or rewrites of a script's approach
-- Switching the guide off its three install methods (Termux, proot-distro Ubuntu, or the Android Virtualization Framework, all defined in the [README](../README.md#quick-install)) onto a different app
+- Switching the guide off its three install methods (Termux, proot-distro Ubuntu, or the Android Virtualization Framework, all defined in the [README](../README.md#choose-an-install-path)) onto a different app
 - A new install path with no device proof behind it
-- Marketing or hype language, or anything selling the project
 - Any claim the install scripts, `docs/`, or a live upstream source do not support
 - Wording-only churn that changes style without fixing an error
 
@@ -32,7 +31,7 @@ I would rather say this plainly than decline your PR after the fact. These are m
 
 Use the [bug report template](https://github.com/ferrumclaudepilgrim/claude-code-android/issues/new?template=bug_report.yml). Before you file, check [docs/troubleshooting.md](../docs/troubleshooting.md) first: most reports fall into a handful of common issues like launch crashes, DNS hangs, search failures, and sign-in trouble on older Android versions, and each has a fix written up.
 
-If it is not one of those, the fastest thing you can give me is:
+The form asks for a small common set of facts and then path-specific diagnostics. At minimum, include:
 
 - Device model and Android version
 - `claude --version`
@@ -40,7 +39,9 @@ If it is not one of those, the fastest thing you can give me is:
 - The exact error message
 - Steps to reproduce
 
-Node.js version (`node -v`) matters **only on Path B or a pinned install**. Native Path A ships no Node, so leave that field blank there.
+Run diagnostic commands in the environment named by the form: ordinary Termux for Path A, inside the Ubuntu shell for Path B, or inside the Linux development environment for Path C. Node.js version (`node -v`) matters for the **pinned `2.1.112` install**, or if you added Node for your own tools. Native A/B/C do not require it; otherwise leave that field blank.
+
+Before posting output, remove access tokens, email addresses, usernames, project paths, local IP addresses, pairing codes, notification contents, and any other personal data. Do not post `~/.claude` credentials, SSH keys, or complete environment dumps.
 
 ## Reporting device compatibility
 
@@ -54,12 +55,13 @@ Verifying claims on real devices is the part I care about most. If your change t
 bash tests/verify-claims.sh
 ```
 
-It checks documented claims against your actual device and writes a file to `tests/results/`. Include that output with your PR so I can see what your hardware reported. Claims here are grounded on real devices, not on what should work in theory. If you cannot test a path, say so in the PR rather than guessing, and I will test it or hold the change until it can be verified.
+It runs a selected set of device checks and writes a file to `tests/results/`; it is not a comprehensive test of every documentation claim. Include that output with your PR so I can see what your hardware reported. Claims here are grounded on real devices, not on what should work in theory. If you cannot test a path, say so in the PR rather than guessing, and I will test it or hold the change until it can be verified.
 
 If your change touches `install.sh`, `migrate.sh`, or the launcher they write, also run the automated checks. These run on every pull request, so running them first saves you a round trip:
 
 ```bash
 bash scripts/check-sync.sh           # the two installers must stay identical
+bash scripts/check-metadata.sh       # the version matches across README, changelog, and device page
 bash tests/wrapper-update-tests.sh   # launcher update, rollback, and preload behavior
 bash tests/installer-smoke-tests.sh  # install-time launch-probe classification
 bash tests/mutation-check.sh         # proves the tests fail when the code is broken
@@ -67,15 +69,31 @@ bash tests/mutation-check.sh         # proves the tests fail when the code is br
 
 One thing that catches people out: `install.sh` and `migrate.sh` contain two sections that must stay byte-identical, marked with `SYNC:BEGIN` and `SYNC:END`. If you change one, make the same change in the other, or `check-sync.sh` fails the build.
 
+### What the checks establish
+
+Host regression tests and saved phone captures answer different questions:
+
+| Check or evidence | What it establishes |
+|---|---|
+| [`check-sync.sh`](../scripts/check-sync.sh) | Marked shared blocks in the installers agree. |
+| [`check-metadata.sh`](../scripts/check-metadata.sh) | README, compatibility, and changelog versions agree; it currently does not inspect `VERSION`. |
+| Wrapper, installer-smoke, SSRF, and mutation tests under [`tests/`](../tests) | Focused host regression checks with substituted calls or synthetic input; no phone compatibility guarantee. |
+| [`verify-claims.sh`](../tests/verify-claims.sh) | Selected on-device checks that write a result file and may use ADB. It is not read-only and does not test every feature. |
+| [`device-release-runner.sh`](../tests/device-release-runner.sh) | A maintainer operation that installs, migrates, updates, and writes logs. It is not a user health check. |
+| Saved device `.txt` outputs | Historical 2026-05-16 environment and legacy observations, not current release acceptance. |
+| [Sensor captures](../tests/results/sensors/README.md) | Dated ADB-shell evidence with its build and identity limits stated. |
+
+The regression tests still have value. Older captures explain past observations; the [device evidence](../docs/device-compatibility.md) records what they establish and what they do not.
+
 ## Contributing skills
 
-Skills live under `.claude/skills/<name>/` with a `SKILL.md` carrying YAML frontmatter (this repo uses the Claude Code fields `user-invocable`, `disable-model-invocation`, and `argument-hint`; see the [skills docs](https://code.claude.com/docs/en/skills)). To add one:
+Skills live under `.claude/skills/<name>/` with a `SKILL.md` carrying YAML frontmatter (this repo uses the Claude Code fields `user-invocable` and `disable-model-invocation`; see the [skills docs](https://code.claude.com/docs/en/skills)). To add one:
 
 1. Create `.claude/skills/<name>/` with a `SKILL.md`
 2. Test it on a real Android device running Termux
 3. Open a PR stating what it does and which device you tested on
 
-Use `.claude/skills/scope-framing/` as a model for a well-formed skill. If what you want is really a deterministic check rather than a skill, `scripts/check-termux-env.sh` shows when a plain bash script is the better tool.
+Use `.claude/skills/termux-safe/` as a model for a well-formed skill. If what you want is really a deterministic check rather than a skill, `scripts/check-termux-env.sh` shows when a plain bash script is the better tool.
 
 ## AI-assisted contributions
 
@@ -93,7 +111,7 @@ The one thing I do ask is this: if your change says something works, run it on a
 ## Voice and style
 
 - Empirical-truth-first, and same-as-PC framing: the goal is helping someone run Claude Code on their phone the way they would on a PC
-- Humble and specific over broad and promotional; no hype
+- Clear, specific, evidence-backed, and understandable to someone new to Android terminals
 - No em-dashes and no prose double-dashes (CLI flags and code are exempt)
 - Define jargon a newcomer would not know, and do not assume the reader shares your context
 

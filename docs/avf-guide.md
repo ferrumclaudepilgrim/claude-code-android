@@ -14,11 +14,25 @@
 
 ---
 
+## On This Page
+
+- [What AVF is](#what-avf-is)
+- [Device requirements](#device-requirements)
+- [Set up the Linux VM](#setup-checklist)
+- [Configure the VM](#vm-configuration)
+- [Back up before recovery](#recovery-and-backups)
+- [Install Claude Code](#claude-code-installation-inside-avf)
+- [Tested capabilities](#what-i-observed-working)
+- [ADB access](#adb-wireless-from-inside-the-vm)
+- [Known issues and security](#known-issues)
+- [Choose between Path A, B, and C](#comparison-path-a-vs-path-b-vs-path-c)
+- [Technical details](#technical-details-for-the-curious)
+
 ## What AVF Is
 
 In plain terms: Path C runs a real Linux computer inside your phone using Android's built-in virtualization. Everything below is detail for the curious; you do not need to understand it to use this path.
 
-Android Virtualization Framework (AVF) is Google's built-in hypervisor (the software layer that runs virtual machines) for running Linux VMs directly on Android. Starting with Android 16, supported devices ship a Terminal app that boots a Debian VM with a real Linux kernel. Unlike proot-distro (Path B), which uses syscall translation, AVF runs an actual VM: `process.platform === "linux"`, native `/tmp`, no proot overhead.
+Android Virtualization Framework (AVF) is Android's framework for creating and managing virtual machines. On supported builds, the Terminal app boots a Debian VM with a real Linux kernel. Unlike proot-distro (Path B), which uses syscall translation, AVF runs an actual VM: `process.platform === "linux"`, native `/tmp`, no proot overhead.
 
 The VM runs on crosvm (Chrome OS's virtual machine monitor), managed by Android's VirtualizationService, with pKVM (Android's paravirtualized KVM hypervisor) providing hardware-level isolation. Device I/O uses virtio (a standard interface for virtual devices). AOSP (Android Open Source Project) architecture reference: [source.android.com/docs/core/virtualization/architecture](https://source.android.com/docs/core/virtualization/architecture).
 
@@ -28,14 +42,14 @@ The VM runs on crosvm (Chrome OS's virtual machine monitor), managed by Android'
 
 | Requirement | Details |
 |-------------|---------|
-| **Chipset** | Google Tensor (Pixel 6 and later) verified in my lab. Other chipsets vary by OEM; see below. |
-| **Android version** | Android 16 or later |
+| **Chipset** | Google Tensor on Pixel 6 and Pixel 10 Pro verified in my lab. Other devices and chipsets depend on their OEM build; see below. |
+| **Android build** | Must expose Linux development environment; the lab observations below cover Android 17. Android version alone is not sufficient. |
 | **Developer Options** | Must be enabled |
 | **WiFi or data** | Required for the initial Debian image download (several hundred megabytes). Use WiFi. |
 
-If your phone exposes Settings > System > Developer options > **Linux development environment**, your device supports this path. If that option is missing, it does not.
+If your phone exposes Settings > System > Developer options > **Linux development environment**, the AVF Terminal path is available in that build. If the option is missing, this guide cannot enable it; availability may change with Android and OEM updates.
 
-In my testing and per public reports, Snapdragon phones are not supported on stock firmware: Qualcomm exposes only "protected" VMs at EL2 (ARM Exception Level 2, the CPU privilege level a hypervisor runs at), but the Terminal app requires non-protected VMs. Knox RKP (Real-time Kernel Protection, Samsung's hypervisor-backed security feature) on older Samsung devices conflicted with AVF for the same family of reasons. Samsung support varies: Exynos-based Galaxy S26 and S26+ on One UI 8.5 are reported supported per Samsung's release notes, while the Snapdragon Galaxy S26 Ultra is not. I do not own a Samsung Exynos S26 or S26+, so I cannot confirm Samsung behaviour from first-hand testing.
+In my lab, this path is verified only on the two Tensor Pixels named above. Public reports indicate that stock Snapdragon and Samsung support varies by device and firmware because the Terminal app needs virtualization features the OEM must expose. Exynos-based Galaxy S26 and S26+ support has been reported in Samsung release material, while Snapdragon variants may differ. I do not own those models, so treat those statements as reported compatibility rather than first-hand evidence.
 
 ---
 
@@ -46,6 +60,9 @@ Verified on Pixel 6 and Pixel 10 Pro running Android 17 on 2026-05-26.
 ### 1. Enable Developer Options
 
 Settings > About phone > tap **Build number** 7 times.
+
+> [!WARNING]
+> Developer options are required for this path. Enable only Linux development environment; USB and wireless debugging are separate controls and are not required to install Claude here. Review unfamiliar settings before changing them. [Android's current setup documentation](https://source.android.com/docs/core/virtualization/usecases#linux_development_environment) was checked on 2026-10-25.
 
 ### 2. Enable Linux Development Environment
 
@@ -66,7 +83,7 @@ Tap the gear icon in the top right of the Terminal app to open Settings. The cat
 - **Port control**: allow or deny ports that processes inside the VM open
 - **Theming**: terminal color presets, plus import of custom themes
 - **Advanced**: Display resolution, Memory size, Keep awake. On Pixel 10 Pro an additional Graphics Acceleration toggle appears.
-- **Recovery**: "Reset to initial version" wipes the Debian image and re-downloads it. "Remove backup data" wipes `/mnt/backup`.
+- **Recovery**: "Reset to initial version" wipes the Debian image and re-downloads it. "Remove backup data" wipes `/mnt/backup`. [Back up projects first](#recovery-and-backups).
 
 You can run Claude Code without changing any of these. The defaults work.
 
@@ -101,6 +118,12 @@ zram swap (compressed swap space held in RAM) is configured automatically inside
 
 ---
 
+## Recovery and Backups
+
+Before resetting, copy guest projects to a destination outside the VM, such as `/mnt/shared` or a backup location you control. `/mnt/shared` is Android shared storage: check the copy from Android's Files app before resetting. Do not leave credentials or private keys in an unprotected shared folder. A project's Git remote is another option only if it is the intended destination and every needed file is committed and pushed; uncommitted and ignored files need a separate backup.
+
+In **Terminal Settings → Recovery**, **Reset to initial version** recreates the Debian guest and deletes files held only inside it. **Remove backup data** separately deletes `/mnt/backup`; that name is not proof your projects were backed up there. If the VM cannot start, do not reset while assuming its inaccessible files are safely copied elsewhere.
+
 ## Claude Code Installation Inside AVF
 
 Once the Terminal app is running and you have a Debian shell:
@@ -125,7 +148,7 @@ claude
 
 Authenticate via OAuth as normal.
 
-There is no automatic update or crash-rollback on Path C. The VM runs a real Linux kernel, so Anthropic's official installer works the same way it does on a PC. Update by re-running the installer.
+Path C uses Anthropic's native updater. This repository's Path A wrapper and crash rollback do not apply. Run `claude update` for a manual update; rerun the installer only for installation repair. See [native updates](https://code.claude.com/docs/en/setup#auto-updates).
 
 **Copy-paste warning:** The AVF terminal has unreliable copy-paste behavior. Long commands and multi-line commands frequently break when pasted. Type commands manually or verify pasted text character by character before running.
 
@@ -141,7 +164,7 @@ These capabilities were confirmed through direct testing on my Pixel 10 Pro. Res
 - **Standard `apt` package management.** Full Debian 13 (trixie) package ecosystem. `sudo apt update` and `sudo apt upgrade` work normally, including systemd package updates.
 - **Claude Code installs via the official Anthropic installer.** No npm, no Node.js version management, no ripgrep symlink needed.
 - **Python 3 pre-installed.** Node.js, GCC, and make are NOT pre-installed; install with `sudo apt install`.
-- **OpenSSH is installed but not running by default.** Enable with `sudo systemctl enable --now ssh` if you want it.
+- **OpenSSH is installed but not running by default.** Review the [default account and SSH settings](#security-defaults-users-should-be-aware) before enabling remote access.
 - **systemd fully functional.** Service management, timers, and journals all work. Updating systemd via apt worked without issues in my testing.
 
 ### Hardware and Performance
@@ -201,14 +224,14 @@ adb connect <phone-wifi-ip>:<connection-port>
 - The connection port rotates each Wireless Debugging session
 - Once connected, commands like `adb shell dumpsys battery`, `adb shell dumpsys thermalservice`, and `adb logcat` all worked
 
-**What ADB unlocks from inside the VM:**
+**What ADB allowed in this test setup:**
 - Battery status, thermal monitoring, display info
 - Logcat (system logs from the Android host)
 - App management (dumpsys, am, pm)
 - Device settings (get/set system properties)
 - Input injection (tap, swipe, text)
 - The screen-off stability commands described in the Setup section
-- Hardware sensor access, GPS, camera, screenshots, and more (see next section)
+- Queries or actions involving sensors, location, camera, and screenshots through Android system interfaces (see next section). Availability and returned data depend on Android version, permissions, device state, and OEM policy.
 
 ---
 
@@ -216,23 +239,9 @@ adb connect <phone-wifi-ip>:<connection-port>
 
 With ADB connected from inside the VM to the Android host, I tested access to phone hardware. This was observed in my testing on a single device.
 
-### Sensor Inventory
+### Sensors: check your device
 
-42 hardware sensors were enumerable via `adb shell dumpsys sensorservice`. The sensor categories observed:
-
-| Category | Sensors | Example Chips |
-|----------|---------|---------------|
-| **Motion** | Accelerometer, gyroscope (calibrated + uncalibrated), linear acceleration, gravity, rotation vectors (3 types), orientation | ICM45631 (Invensense) |
-| **Magnetic** | Magnetometer (calibrated + uncalibrated), geomagnetic rotation vector | MMC5616 (MEMSIC) |
-| **Environmental** | Barometer, ambient light, color sensor, rear light | SPL07003 (Goermicro), TMD3743 (AMS), VD6282 (STMicro) |
-| **Proximity/Gesture** | Proximity, tilt, lift to wake, significant motion, device orientation | TMD3743 (AMS), Google fusion |
-| **Activity** | Step detector, step counter (require ACTIVITY_RECOGNITION permission) | Google fusion |
-| **Temperature** | Gyro temperature, pressure temperature | Invensense, Goermicro |
-| **Camera/System** | Camera V-Sync (4 instances), dynamic sensor manager, motion detect, stationary detect | Google, ICM45631 |
-
-Sensors ranged from 10Hz (proximity) to 400Hz (accelerometer/gyroscope). Several were actively reporting data at the time of the query.
-
-**Limitation:** `dumpsys sensorservice` shows which sensors exist, their sampling rates, and which are currently active, but does not expose raw X/Y/Z values in a pipeable format. Live sensor value streaming needs pipeline work (see below).
+Sensor counts and available readings vary by phone, Android build, permissions, and access method. The [sensor guide](add-ons/sensors.md#adb-inventory-from-the-avf-guide) owns the historical inventory, the four-device campaign, and the distinction between enumeration and usable readings. ADB access from this VM does not make Android sensors native Linux devices.
 
 ### GPS / Location
 
@@ -256,10 +265,12 @@ Both worked reliably in my testing. Screenshots ranged from 202KB to 777KB depen
 
 ### Input Injection
 
-```bash
-adb shell input text "hello"         # Type text into focused field
-adb shell input tap 500 1000         # Tap screen coordinates
-adb shell input swipe 100 500 100 100  # Swipe gesture
+These are syntax examples, not recorded device values or ready-to-run commands. Replace the labels with your own screen coordinates and use a harmless test field first:
+
+```text
+adb shell input text "EXAMPLE_TEXT"
+adb shell input tap X Y
+adb shell input swipe START_X START_Y END_X END_Y DURATION_MS
 ```
 
 All input injection commands worked in my testing. The device reported multitouch support with 10 touch slots and pressure sensitivity.
@@ -280,13 +291,15 @@ Both returned detailed real-time data in my testing. Battery data included charg
 
 ### Needs Pipeline Work
 
-- **Live sensor value streaming:** The 42 sensors are enumerable but raw values (X/Y/Z accelerometer data, etc.) are not available in a pipeable format via `dumpsys`. Options include writing a minimal Android app, polling `dumpsys` in a loop, using Termux:API as a sensor bridge, or parsing `adb shell getevent` for raw input events.
+- **Live sensor value streaming:** enumeration is not a stream of readings. Use a device-supported Android API and verify emitted events under that execution identity; see the [sensor methods and evidence](add-ons/sensors.md). Polling an inventory or arbitrary input events is not a general sensor-reading solution.
 - **Camera photo capture to file:** The camera app opens but programmatically taking a photo and saving it to a retrievable path needs either an intent with an output URI (`am start -a IMAGE_CAPTURE --eu output file:///sdcard/photo.jpg`) or the screencap workaround (captures whatever is on screen, including the viewfinder).
 - **Clipboard read:** Content access restricted on Android 13+. May need accessibility service or specific permissions.
 
 ### ADB Command Reference
 
-```bash
+Reference syntax, not a sequence to paste. Choose the operation you need after connecting; replace uppercase labels with your own values. Camera and input commands act on the phone's current screen.
+
+```text
 # Sensor enumeration
 adb shell dumpsys sensorservice
 
@@ -306,7 +319,7 @@ adb shell screenrecord --time-limit N /sdcard/vid.mp4 && adb pull /sdcard/vid.mp
 adb shell dumpsys battery
 
 # Input injection
-adb shell input text "hello"
+adb shell input text "EXAMPLE_TEXT"
 adb shell input tap X Y
 
 # WiFi info
@@ -329,9 +342,9 @@ adb shell dumpsys wifi | grep mWifiInfo
 | nftables non-functional | Cannot use nft command despite kernel netfilter support | Use `iptables-legacy` instead: `sudo update-alternatives --set iptables /usr/sbin/iptables-legacy` | Kernel has CONFIG_NETFILTER=y but nftables operations return "Invalid argument" |
 | No kernel module loading | Cannot extend kernel functionality at runtime | None (kernel is monolithic, /lib/modules/ is empty) | By design |
 | "VM damaged" on unclean shutdown | Must reinstall entire VM | Commit/push work frequently; treat VM storage as ephemeral | By design. Terminal app marks any unclean shutdown as damaged. |
-| Snapdragon phones not supported (in my testing and per public reports) | Linux dev environment option absent | None on stock firmware | Qualcomm exposes only protected VMs at EL2; the Terminal app requires non-protected VMs. Samsung's Exynos S26 / S26+ on One UI 8.5 are reported supported per Samsung's release notes; I have not lab-verified Samsung Exynos behaviour. |
+| Linux development environment option absent | Cannot use this Terminal path on that build | Use Path A or B | Availability depends on the device and build. Lab support here covers two named Pixels; a chipset name alone is not a support test. See [device requirements](#device-requirements). |
 | No USB passthrough | Cannot access USB devices from VM | None | No USB host controller emulated by AVF |
-| No phone sensors directly in VM | Camera, GPS, accelerometer, etc. not available inside VM natively | Access via ADB bridge: 42 sensors enumerable, GPS and camera accessible (see ADB Hardware Access section) | Sensors confirmed enumerable. Live value streaming needs pipeline work. |
+| No phone sensors directly in VM | Camera, GPS, accelerometer, etc. not available inside VM natively | Optional ADB bridge; see the sensor guide for device-specific evidence | Sensors confirmed enumerable. Live value streaming needs pipeline work. |
 | VM IP changes per boot | Scripts using hardcoded VM IPs break | Query IP dynamically at boot | Virtual network interface gets a new address each time |
 | GPU acceleration limited | Pixel 10 Pro exposes a Graphics Acceleration toggle (GPU-accelerated renderer) in Settings > Advanced. Other Pixel models fall back to the software renderer. | CLI-only Claude Code use avoids the GPU entirely | Tied to the device's AVF graphics overlay package. Pixel 10 Pro ships it; Pixel 6 does not. |
 
@@ -361,8 +374,8 @@ The VM is on a virtual network not directly reachable from the internet. Only th
 - **Standard package management.** `apt` works normally. Full Debian package ecosystem available. System packages including systemd can be updated without issues.
 - **Claude Code installs via official installer.** No npm, no Node.js version management, no ripgrep symlink needed.
 - **RAM is configurable.** Settings (gear) > Advanced > Memory size exposes an integer MB input and a slider scaled to your device's total RAM. The code default is 1024 MiB.
-- **ADB bridge to phone.** Wireless debugging from inside the VM provides access to 42 phone sensors, GPS, camera, screenshots, screen recording, input injection, battery, and WiFi data.
-- **Audio pipeline.** PulseAudio, ALSA (Advanced Linux Sound Architecture), playback and capture all functional.
+- **ADB bridge to phone.** In the recorded checks, wireless ADB from the VM exposed selected phone diagnostics and controls. Sensor evidence and limits live in the [sensor guide](add-ons/sensors.md).
+- **Audio pipeline.** PulseAudio and the virtual sound device were detected; playback/capture commands succeeded. Actual phone-speaker routing was not conclusively verified.
 - **GUI headless rendering.** Firefox screenshots, automated browser testing, and similar headless workflows work.
 - **Isolation.** VM is separated from Android. Crashes don't affect the host OS.
 
@@ -370,22 +383,24 @@ The VM is on a virtual network not directly reachable from the internet. Only th
 
 ## Comparison: Path A vs Path B vs Path C
 
+Times and sizes are estimates. Use the [installation guide](install.md#choose-your-path) for current procedures and [device compatibility](device-compatibility.md) for dated results.
+
 | | Path A (Native Termux) | Path B (Ubuntu in Termux) | Path C (AVF VM) |
 |---|---|---|---|
 | **Setup time** | 5-10 min | ~10-15 min (experienced) | ~20 min (experienced) |
 | **Disk usage** | ~280 MB base | ~2 GB | ~2 GB (Debian image) |
 | **Install method** | Patched linux-arm64 binary via glibc-runner; auto-updating wrapper | Official Anthropic installer | Official Anthropic installer |
-| **Linux kernel** | No (Android kernel + syscall translation) | No (proot syscall translation) | Yes (real VM kernel) |
+| **Kernel** | Host Android Linux kernel; glibc compatibility layer | Host Android Linux kernel; proot translates selected system calls | Separate Linux guest kernel |
 | **`/tmp` workaround** | Not needed | Not needed | Not needed |
 | **Ripgrep** | Not needed (binary ships vendor/ripgrep/arm64-linux/rg) | Not needed | Not needed |
 | **`process.platform`** | `"linux"` (the patched binary is the linux-arm64 build) | `"linux"` | `"linux"` |
 | **RAM** | Shares device RAM | Shares device RAM | Configurable in Terminal app Settings > Advanced > Memory size. Code default is 1024 MiB; slider scales with device RAM. |
-| **Termux API access** | Full (camera, TTS, GPS, SMS, sensors) | Full (via PATH extension) | None directly (extensive access via ADB bridge: 42 sensors, GPS, camera, screenshots, input) |
+| **Termux API access** | Optional companion app and permissions | Optional host integration; permissions still required | No direct Termux:API; the separate ADB bridge has device-specific capabilities |
 | **ADB self-connect** | Works (127.0.0.1) | Works (127.0.0.1) | Works (via Wi-Fi IP, observed in my testing) |
-| **Device support** | Any aarch64 Android 8+ (Android 8 / 9 have OAuth caveats; see FAQ) | Any aarch64 Android 8+ (Android 8 / 9 have OAuth caveats; see FAQ) | Pixel 6+ with Android 16+ only |
-| **Stability** | Stable | Stable | Experimental (VM may be killed) |
-| **Ongoing maintenance** | None (wrapper auto-updates) | Just update normally | Just update normally (if VM survives) |
-| **Audio** | Via Termux API | Via Termux API | Native (PulseAudio + VirtIO) |
+| **Device support** | Newer ARM64 lab phones; Android 8–10 lab phones needed pinned fallback | Recorded on ARM64 lab phones, including older Android | Android builds exposing the Linux environment toggle; Pixel 6 and Pixel 10 Pro lab checks |
+| **Evidence** | Dated native and pinned lab checks | Dated lab observations | Experimental; two named lab Pixels |
+| **Ongoing maintenance** | Wrapper checks, launcher refreshes, and recovery | Guest packages and Anthropic updater | Guest packages, Anthropic updater, and VM backups |
+| **Audio** | Android permissions and capture backend apply | Host audio integration needed | PulseAudio + VirtIO commands tested; phone audio routing unverified |
 | **GUI capability** | Limited | Limited | Headless rendering confirmed; interactive compositor possible |
 | **Best for** | Most users; the default path, start here | Users who want a full Debian/Ubuntu userland | Experimenters with Pixel devices who want native Linux |
 
@@ -394,10 +409,10 @@ The VM is on a virtual network not directly reachable from the internet. Only th
 ## When to Use AVF vs Termux
 
 **Use Path C (AVF) when:**
-- You have a Pixel 6 or later running Android 16 or later (or a reported-supported Samsung Exynos S26 / S26+ on One UI 8.5)
+- Your Android build exposes **Linux development environment**; the lab observations cover Pixel 6 and Pixel 10 Pro, not every newer Pixel
 - You want a real Linux environment with native `/tmp` and `process.platform === "linux"`
 - You want to set VM memory and display resolution from a UI rather than work around Android's defaults
-- You want native audio, headless GUI rendering, or systemd services
+- You want headless GUI rendering or systemd services; phone audio routing still needs verification
 - You don't need direct Termux API access (the ADB bridge described above provides sensors, GPS, camera, and input access)
 - You're comfortable with experimental software that may lose work on unexpected shutdown
 - You want the cleanest Claude Code install experience (official installer, no workarounds)
@@ -405,7 +420,7 @@ The VM is on a virtual network not directly reachable from the internet. Only th
 **Use Path A or B (Termux) when:**
 - You have any ARM64 Android 8+ device (Android 8 / 9 have OAuth caveats; see [FAQ](faq.md#claude-prints-a-url-but-my-browser-doesnt-open)) (Samsung, OnePlus, Pixel, etc.)
 - You need Termux API features
-- You need stability. Termux doesn't get killed by Android's memory management the same way.
+- You prefer avoiding a separate VM lifecycle. Android can still kill Termux or its child processes; see [battery and background work](install.md#battery-and-background-work).
 - You want a proven path that has been tested across multiple devices and Android versions
 
 **Use both when:**
@@ -478,4 +493,4 @@ The Terminal app launches the VM via Android's VirtualizationService, which in t
 
 ---
 
-*Last updated: 2026-07-01. AVF path re-verified end to end on Pixel 6 (Android 17) and Pixel 10 Pro (Android 17) on 2026-05-26. Earlier baseline testing on Pixel 10 Pro, Android 16, dated 2026-04-01. AOSP architecture reference: [source.android.com/docs/core/virtualization](https://source.android.com/docs/core/virtualization). If you test on a different device, please [open an issue](https://github.com/ferrumclaudepilgrim/claude-code-android/issues/new?template=device_report.yml) with your results.*
+*Last updated: 2026-08-31. AVF path re-verified end to end on Pixel 6 (Android 17) and Pixel 10 Pro (Android 17) on 2026-05-26. Earlier baseline testing on Pixel 10 Pro, Android 16, dated 2026-04-01. AOSP architecture reference: [source.android.com/docs/core/virtualization](https://source.android.com/docs/core/virtualization). If you test on a different device, please [open an issue](https://github.com/ferrumclaudepilgrim/claude-code-android/issues/new?template=device_report.yml) with your results.*

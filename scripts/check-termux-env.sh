@@ -5,11 +5,11 @@
 # NOT the same as `claude doctor`. The built-in `claude doctor` checks
 # Claude Code's own runtime health. This script checks the Termux side:
 # install integrity, the wrapper, Termux:API, file-descriptor limit,
-# phantom-process-killer headroom, storage.
+# background process count, storage.
 #
-# Auto-detects whether you are running a v2.9.0 install (patched
-# linux-arm64 binary + auto-updating wrapper) or a v2.x install (npm
-# pinned 2.1.112). Checks adjust accordingly.
+# Auto-detects whether you are running the Path A launcher (patched
+# linux-arm64 binary + auto-updating wrapper) or the pinned install (npm
+# Claude Code 2.1.112). Checks adjust accordingly.
 #
 # Use this when something is wrong and you want to know which Termux
 # constraint is biting you, or after a fresh install to sanity-check.
@@ -64,7 +64,13 @@ fi
 
 echo "Claude Code Android: Environment Diagnostic"
 echo "Date: $(date -u '+%Y-%m-%d %H:%M:%SZ')"
-echo "Install type detected: $INSTALL_TYPE"
+case "$INSTALL_TYPE" in
+  v2.9.0) INSTALL_LABEL="Path A launcher" ;;
+  v2.x) INSTALL_LABEL="pinned install" ;;
+  unknown-but-claude-on-path) INSTALL_LABEL="not recognized (claude is on PATH)" ;;
+  *) INSTALL_LABEL="none found" ;;
+esac
+echo "Install type detected: $INSTALL_LABEL"
 echo ""
 printf '| %2s | %-32s | %-4s | %s\n' '#' Check Status Detail
 printf '| %2s-+-%-32s-+-%-4s-+-%s\n' '--' '--------------------------------' '----' '------------------------------'
@@ -87,9 +93,9 @@ if [ "$INSTALL_TYPE" = v2.9.0 ]; then
 elif [ "$INSTALL_TYPE" = v2.x ]; then
   # v2: check install-dir read-only lock
   if [ -d "$V2_INSTALL_DIR" ] && [ "$(stat -c '%A' "$V2_INSTALL_DIR" 2>/dev/null | cut -c1-4)" = "dr-x" ]; then
-    row 2 "install dir read-only (v2.x pin)" PASS "auto-updater cannot overwrite"
+    row 2 "install dir read-only (pinned)" PASS "auto-updater cannot overwrite"
   else
-    row 2 "install dir read-only (v2.x pin)" WARN "directory writable; the auto-updater can clobber the pin"
+    row 2 "install dir read-only (pinned)" WARN "directory writable; the auto-updater can clobber the pin"
   fi
 else
   row 2 "install integrity" WARN "install type not recognized; manual inspection recommended"
@@ -138,12 +144,14 @@ if [ "$INSTALL_TYPE" = v2.9.0 ]; then
   fi
 fi
 
-# --- 6. Termux source ---
+# --- 6. Termux packages ---
+# Confirms Termux's own tools are installed. It cannot tell where Termux was
+# installed from; the Termux maintainers recommend F-Droid or GitHub releases.
 TERMUX_VER="$(pkg show termux-tools 2>/dev/null | awk -F: '/^Version:/ {print $2; exit}' | tr -d ' ' || true)"
 if [ -n "$TERMUX_VER" ]; then
-  row 6 "Termux source" PASS "termux-tools $TERMUX_VER"
+  row 6 "Termux packages found" PASS "termux-tools $TERMUX_VER"
 else
-  row 6 "Termux source" WARN "could not detect (the Termux maintainers recommend F-Droid or GitHub releases)"
+  row 6 "Termux packages found" WARN "could not read the termux-tools version (the Termux maintainers recommend F-Droid or GitHub releases)"
 fi
 
 # --- 7. fd limit ---
@@ -155,12 +163,13 @@ else
 fi
 
 # --- 8. Background process count ---
-# Phantom process killer trips around 32 processes across all apps by default.
+# Counts the processes visible from Termux. Android can stop excess child
+# processes (its phantom process controls); the exact limit varies by device.
 BG_COUNT="$(ps -o pid= 2>/dev/null | wc -l)"
 if [ "$BG_COUNT" -lt 25 ] 2>/dev/null; then
-  row 8 "Background process count" PASS "$BG_COUNT (headroom OK)"
+  row 8 "Background process count" PASS "$BG_COUNT running"
 else
-  row 8 "Background process count" WARN "$BG_COUNT (close to phantom-killer threshold ~32)"
+  row 8 "Background process count" WARN "$BG_COUNT running; Android may stop extra processes (see troubleshooting)"
 fi
 
 # --- 9. Storage ---

@@ -4,6 +4,42 @@
 
 (No unreleased changes yet.)
 
+## [2.9.5] - 2026-10-25
+
+This update reorganizes the guides, consolidates device reports, and tightens maintainer checks. Device results retain their recorded dates and testing boundaries.
+
+### Added
+
+- A device compatibility and evidence table combines dated maintainer checks, contributor evidence, and community reports, including the Galaxy S23 Ultra Path B report in issue #12. Reported workarounds remain distinct from fixed defects.
+- A passive Android sensor probe and saved results from four lab phones. The results separate sensor availability from observed events and record the ADB-shell test boundary.
+- A release checklist and an automated metadata consistency check for the README badge, the device compatibility page, and the changelog.
+
+### Changed
+
+- Repository version: `2.9.4` to `2.9.5`; Anthropic's Claude Code version and the `2.1.112` fallback are separate.
+- Optional guides now live together under `docs/add-ons/`, reached through Build with Android. The `CLAUDE.md` starter is `project-instructions.md`; the old constitution, fingerprint, and SSRF locations are removed. The wireless ADB guide is now [here](docs/add-ons/adb-wireless.md). Historical release entries retain their original wording and link destinations.
+- The README and contribution guidance use simpler, evidence-first language and describe Android limitations without comparing the project to unrelated repositories.
+- The install, wireless ADB, AVF, sensor, security, troubleshooting, skills, and starter-template guides have clearer navigation and tighter scope. The install guidance now covers Android battery and background restrictions without implying that one menu path fits every device.
+- Bug reports now request redacted Termux and install-path diagnostics appropriate to the reported setup.
+- `tests/verify-claims.sh` is described as a selected-check harness rather than proof of every documentation claim.
+- The termux-safe skill covers the `#!/usr/bin/env` limitation under the Path A launcher and recommends the shell builtin `command -v` while identifying `which` as an available package. The skills guide retains the caveat about its existing low-port rule.
+- The `CLAUDE.md` starter drops the Termux rules the termux-safe skill already covers, and its optional subagent section.
+- `scripts/check-termux-env.sh` labels its checks for what they measure and no longer cites a fixed process limit. Every check and exit code is unchanged.
+
+### Removed
+
+- The general-purpose `minimum-viable` and `scope-framing` skills, which were not specific to Android.
+- `scripts/config-validator.sh`, a general `.claude/` folder checker with nothing Android-specific.
+
+### Fixed
+
+- The Moto G7 Power Path B result retains the dated 2026-05-16 maintainer record; missing separate transcripts do not negate that record.
+- The link checker explicitly excludes the obsolete local ADB target retained in the immutable 2.0.0 changelog entry; all other changelog links remain in scope.
+- Verification scripts now return distinct non-zero statuses for failed checks and harness errors, and the mutation suite protects those exit-code semantics.
+- Security examples no longer imply that blocking a few commands removes all network access.
+- `install-pinned.sh` and the troubleshooting guide now give a working way to run `fix-ripgrep.sh` on a pinned install. The earlier advice pointed to a folder that users who downloaded the installer alone did not have, and the manual steps could not write to the locked install folder.
+- Earlier wording about verifying all documentation claims is clarified: the harness checks selected claims, and its results do not establish every documented behavior.
+
 ## [2.9.4] - 2026-07-27
 
 A reliability release for the installer and the launcher, with a documentation pass alongside it.

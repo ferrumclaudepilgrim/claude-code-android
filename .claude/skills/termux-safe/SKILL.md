@@ -29,8 +29,10 @@ If the runtime signals indicate the in-Termux case, the constraints below produc
 
 - **Node.js is not required by this repo's `install.sh`.** The patched linux-arm64 claude binary is self-contained. If Node is installed separately on native Termux, prefer v25+: v24 had a documented startup hang on ARM64 that was resolved in v25.
 - **File descriptor limits vary by device.** Check with `ulimit -n`. Avoid spawning many concurrent processes.
-- **Android phantom process killer** limits background processes to ~32 across all apps. If "Disable child process restrictions" is enabled in Developer Options, this limit is lifted; 6 concurrent subagents have been observed stable in testing. Otherwise limit to 2-3.
+- **Android can stop background work.** Its phantom process controls can kill excess child processes, and battery and background policies can suspend or kill Termux. Keep concurrent subagents and child processes modest. Where Developer options offers "Disable child process restrictions", turning it on helps with the first limit. `tmux` or `nohup` keep work running when a terminal window closes, but not after Android kills Termux or the phone reboots.
 - **`process.platform` reporting varies by install path.** On Path A v2.9.0 (the linux-arm64 binary patched via glibc-runner), Node.js reports `process.platform === "linux"` even though you are inside Termux. On older Path A v2.x (the JS-bundle npm install) it reports `"android"`. On Path B (proot-distro Ubuntu) and Path C (AVF), it reports `"linux"` and you are not in Termux. The reliable cross-path signal that you are still in Termux is `$PREFIX === "/data/data/com.termux/files/usr"`.
+- **`#!/usr/bin/env` scripts fail under the Path A launcher.** When the Bash tool runs a script directly and its first line is `#!/usr/bin/env bash` (or `python3`, `node`), it exits with "bad interpreter": Android has no `/usr/bin/env`, and Claude Code's subprocesses do not carry Termux's fix for it. Run the interpreter explicitly: `bash ./script.sh`, `python ./script.py`. Tools called by name and `#!/bin/sh` scripts are unaffected.
+- **Prefer `command -v` to check command availability.** It is a shell builtin. `which` is available with `pkg install which`, but this repo's installers do not explicitly install it.
 
 ## Package Installation
 

@@ -1,47 +1,31 @@
 # Troubleshooting Claude Code on Android
 
-This guide covers problems specific to running Claude Code on **aarch64/ARM64 Android 8+ with Termux** (Path A and Path B), plus a Path C section below that does not use Termux. Path A, B, and C are the three install methods described in the [README](../README.md#quick-install): Path A (native Termux), Path B (proot-distro Ubuntu), and Path C (the Android Virtualization Framework, or AVF, a real Linux VM built into newer Android). Android 8 / 9 have OAuth caveats (see [FAQ](faq.md#claude-prints-a-url-but-my-browser-doesnt-open)). Each entry starts with the error you see, then the fix, then the explanation.
+This guide covers problems specific to running Claude Code on **aarch64/ARM64 Android 8+ with Termux** (Path A and Path B), plus a Path C section below that does not use Termux. Path A, B, and C are the three install methods described in the [README](../README.md#choose-an-install-path): Path A (native Termux), Path B (proot-distro Ubuntu), and Path C (the Android Virtualization Framework, or AVF, a real Linux VM built into newer Android). Android 8 / 9 have OAuth caveats (see [FAQ](faq.md#claude-prints-a-url-but-my-browser-doesnt-open)). Each entry starts with the error you see, then the fix, then the explanation.
 
-If you haven't installed yet, see [install.md](install.md) first.
+> **Document authority:** This page is canonical for symptoms, diagnosis, and recovery. Setup and removal procedures stay in [install.md](install.md); device observations stay in [device compatibility](device-compatibility.md).
+
+If you haven't installed yet, see [install.md](install.md) first. For an Android warning while installing the Termux APK, use [the source and warning checks](install.md#if-android-blocks-the-termux-apk).
 
 **Which version do I have?** Some entries below are labelled by version, for example "(v2.x install)" or "(v2.9.1+)". Those refer to *this repo's* install (currently 2.9.x), which is a different number from Claude Code's own version (currently 2.1.x). Note that `claude --version` reports Claude Code's number (2.1.x), not this repo's, so it does not tell you which setup you have. For a one-command check that does, see [Which setup am I on?](#which-setup-am-i-on) below.
 
 ---
 
-## Table of Contents
+## Find a Problem
 
-- [Which setup am I on?](#which-setup-am-i-on)
-- [Claude crashes immediately on launch](#claude-crashes-immediately-on-launch)
-- [Update says "checksum mismatch" or stays on an older version](#update-says-checksum-mismatch-or-stays-on-an-older-version)
-- [EACCES error printed at startup](#eacces-error-printed-at-startup)
-- [Claude hangs on "Checking connectivity" / ETIMEOUT / 'API error' on every message](#claude-hangs-on-checking-connectivity--etimeout--api-error-on-every-message)
-- [Unsupported architecture: armhf](#unsupported-architecture-armhf)
-- [Claude Code won't start, no error](#claude-code-wont-start-no-error-v2x-install)
-- [Claude Code exits: "native binary not installed"](#claude-code-exits-native-binary-not-installed-historical--v2x-context)
-- [Claude can't find a tool (jq / git / python / ...)](#claude-cant-find-a-tool-jq--git--python--)
-- [OAuth / authentication fails on first launch](#oauth--authentication-fails-on-first-launch)
-- [proot-distro issues](#proot-distro-issues)
-- [Node.js v24 hangs](#nodejs-v24-hangs)
-- [Process killed randomly](#process-killed-randomly)
-- [EMFILE errors](#emfile-errors)
-- [npm install fails silently](#npm-install-fails-silently-your-own-packages-not-claude-code)
-- [Grep/Glob/slash commands fail with ENOENT](#grepglobslash-commands-fail-with-enoent-v2x-install)
-- [Custom agents fail to load (same root cause)](#custom-agents-v2x)
-- [`#!/usr/bin/env` scripts fail with "bad interpreter"](#usrbinenv-scripts-fail-with-bad-interpreter-v291)
-- [Voice mode not functional](#voice-mode-not-functional)
-- [Hooks on Termux native](#hooks-on-termux-native)
-- [Termux from Google Play has issues](#termux-from-google-play-has-issues)
-- [PDF reading fails ("pdftoppm is not installed")](#pdf-reading-fails-pdftoppm-is-not-installed)
-- [`claude doctor` crashes](#claude-doctor-crashes)
-- [Path C: AVF (Experimental)](#path-c-avf-experimental)
-- [Upstream Issues](#upstream-issues)
-- [ADB Wireless Debugging](#adb-wireless-debugging)
+- [Identify your setup](#which-setup-am-i-on)
+- [Launch and update failures](#claude-crashes-immediately-on-launch)
+- [Connectivity and sign-in](#claude-hangs-on-checking-connectivity--etimeout--api-error-on-every-message)
+- [Path B and Node.js](#proot-distro-issues)
+- [Processes, battery, and background limits](#process-killed-randomly)
+- [Tools, hooks, voice, and PDFs](#claude-cant-find-a-tool-jq--git--python--)
+- [ADB wireless debugging](#adb-wireless-debugging)
+- [Path C and AVF](#path-c-avf-experimental)
 
 ---
 
 ### Which setup am I on?
 
-This repo's own version (currently 2.9.x) is a different number from Claude Code's own version (currently 2.1.x); the two are unrelated. `claude --version` reports Claude Code's number (2.1.x) on every setup, so it does not tell you which of this repo's installs you have. To find that out deterministically, check what is on disk:
+This repo's own version (currently 2.9.x) is a different number from Claude Code's own version (currently 2.1.x); the two are unrelated. `claude --version` reports Claude Code's number (2.1.x) on every setup, so it does not tell you which of this repo's installs you have. For native or pinned Path A, run the following in ordinary Termux to check the known install locations. It does not identify every custom install. For Path B, enter Ubuntu with `proot-distro login ubuntu`; Path C runs in Android's Linux Terminal.
 
 ```bash
 if [ -d "$PREFIX/lib/node_modules/@anthropic-ai/claude-code" ]; then
@@ -79,36 +63,38 @@ or a `Segmentation fault` message that links to `bun.report`. Tellingly, `claude
 
 **Fix it:**
 
-**On Android 8, 9, or 10:** the native binary cannot run on your device at all (tripping Android's seccomp filter is what caused the crash), so re-running `install.sh` will not help; it would just reinstall the same native binary. Install the pinned version instead, an older Claude Code that runs on these devices:
+**On Android 8, 9, or 10:** the Android 8 and Android 10 lab phones failed to launch the current native binary. Re-running the same installer does not resolve that compatibility failure. Install the pinned version instead, an older Claude Code that runs on these devices:
+
+**Keep a separate copy of `~/.claude/settings.json` first.** The pinned installer can replace a settings file it cannot parse. It does not change your login.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ferrumclaudepilgrim/claude-code-android/main/install-pinned.sh -o install-pinned.sh
 bash install-pinned.sh
 ```
 
-Your login and settings are kept. (Not sure which Android version you are on? Settings > About phone > Android version.)
+Parseable settings are merged with the pinned updater setting. (Not sure which Android version you are on? Settings > About phone > Android version.)
 
-**On Android 11 or newer:** re-run this repo's installer. However you first installed, on a phone that already has this setup it refreshes the launcher in place, without the large re-download, updating it to a version that checks each Claude Code update before running it and, on its own, falls back to the last one that worked. Your login and settings are kept.
+**On Android 11 or newer, with the current native setup:** re-run this repo's installer. It refreshes the launcher in place and normally reuses an existing cached binary. Your login and other settings remain; `autoUpdates` becomes `false` and `env.LD_PRELOAD` is removed.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ferrumclaudepilgrim/claude-code-android/main/install.sh -o install.sh
 bash install.sh
 ```
 
-Then start Claude Code the normal way. The refreshed launcher checks the installed version and, if it crashes, rolls back to the last one that worked, with no further action from you.
+Then start Claude Code the normal way. The refreshed launcher tests startup for versions it has not already verified, and tries available saved versions if a check detects a crash. Recovery depends on a usable saved version and does not cover every failure during use. If it still crashes, use the pinned command above or [Path B](install.md#path-b-proot-distro-ubuntu).
 
-If you are still on the older pinned install (Claude Code `2.1.112` with the auto-updater off), `install.sh` will point you to `migrate.sh` instead. Run that: it upgrades you to the current self-healing setup.
+If you are still on the older pinned install (Claude Code `2.1.112` with the auto-updater off), `install.sh` will point you to `migrate.sh` instead. Follow the [migration steps](install.md#upgrading-from-a-pinned-v2x-install) on a phone that can run the current native binary.
 
 **If you then see `no working claude binary found`:** your phone has no good version saved to fall back to. Install the pinned version with the `install-pinned.sh` command shown above, an older Claude Code that does not have this problem.
 
-The pinned version is a safety net, not a one-way street: once a working Claude Code release is out, re-run `install.sh` to move back to the current, self-healing setup.
+The pinned version is a safety net, not a one-way street: once a working Claude Code release is out for your phone, use the [migration steps](install.md#upgrading-from-a-pinned-v2x-install) to move back to the current, self-healing setup.
 
 Running Claude Code inside proot-distro Ubuntu (Path B) is another way around it; see the [install guide](install.md).
 
 <details>
 <summary><strong>Why it happens (background, optional)</strong></summary>
 
-Two different failures produce these messages. `Bad system call` is Android's seccomp filter (a kernel feature that blocks a program from making system calls it is not allowed to) doing its job: the native binary issues a low-level system call the filter does not allow, and Android stops it. Which call trips it is version specific (an Android 10 build has died on `statx`, a newer native build on `pidfd_open`). `Segmentation fault` or `oh no: Bun has crashed` on newer phones is a different problem: it is a null pointer crash inside Termux's `glibc-runner` shim for `epoll_pwait2`, which the Bun 1.4 runtime calls at startup, not a blocked system call. In both cases `claude --version` survives because it exits before it reaches the crash; a real launch does not. The launcher in v2.9.2 and later tests each version this way and rolls back when one fails. The Bun side is fixed upstream in oven-sh/bun#32490 (the runtime issues a raw system call to skip the shim).
+Two different failures produce these messages. `Bad system call` is Android's seccomp filter (a kernel feature that blocks a program from making system calls it is not allowed to) doing its job: the native binary issues a low-level system call the filter does not allow, and Android stops it. Which call trips it is version specific (an Android 10 build has died on `statx`, a newer native build on `pidfd_open`). `Segmentation fault` or `oh no: Bun has crashed` on newer phones is a different problem: it is a null pointer crash inside Termux's `glibc-runner` shim for `epoll_pwait2`, which the Bun 1.4 runtime calls at startup, not a blocked system call. In both cases `claude --version` survives because it exits before it reaches the crash; a real launch does not. The launcher in v2.9.2 and later checks versions it has not already verified and tries saved versions if a startup check detects a crash; recovery depends on a usable saved version. The Bun side is fixed upstream in oven-sh/bun#32490 (the runtime issues a raw system call to skip the shim).
 
 </details>
 
@@ -127,7 +113,7 @@ sha256sum: .../versions/2.1.203.tmp: No such file or directory
 
 or `[claude] update: download incomplete, using cached`. Claude still starts on the cached version; it just does not move up to the new release.
 
-**What happened:** a transient hiccup in the once-a-day update check, most often two `claude` launches within the same few-minute download window on a launcher from before 2.9.4. The published release itself is fine (its checksum is valid); the download on this device did not finish cleanly that time. The launcher then records the daily check as done, so it does not retry until the next day.
+**What happened:** the downloaded file was incomplete or did not match the manifest. On launchers before 2.9.4, concurrent launches could collide during a download and delay the next check until the following day. The current launcher uses a lock and schedules another check in about an hour after download or checksum failure. A mismatch alone does not establish whether the fault is local or upstream.
 
 **Fix it:** force one clean update, in a single terminal with no other `claude` running:
 
@@ -135,14 +121,14 @@ or `[claude] update: download incomplete, using cached`. Claude still starts on 
 claude --update-now
 ```
 
-That downloads the current release, verifies it, and swaps it in. If it still reports a problem, refresh the launcher itself, which also delivers the 2.9.4 launcher that takes a lock so two launches can no longer collide:
+That requests another download and verification; the launcher adopts the candidate only if its checks allow it. If it still reports a problem, refresh the launcher itself, which also delivers the 2.9.4 launcher that takes a lock so two launches can no longer collide:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ferrumclaudepilgrim/claude-code-android/main/install.sh -o install.sh
 bash install.sh
 ```
 
-Your login and settings are kept. A one-off `checksum mismatch` is not a corrupted file you need to clean up by hand: the launcher already discards the partial download.
+Refreshing the native launcher retains your login and other settings, sets `autoUpdates: false`, and removes stale `env.LD_PRELOAD`. The launcher discards failed candidate downloads. If the mismatch repeats, save the error and report it; do not bypass verification.
 
 ---
 
@@ -190,16 +176,9 @@ even though `curl https://api.anthropic.com/` connects fine over both IPv4 and I
 cat ~/.local/share/claude/setdns.js   # -> require("dns").setServers(["8.8.8.8", ...])
 ```
 
-If you'd rather fix it by hand without re-running the installer, write the same preload file the installer uses and load it on each launch. Writing it to the installer's path means the verify command above works for the manual fix too, and the `~/.bashrc` line makes it persist across shells (the installer's wrapper persists it for you; the manual path has no wrapper, so it needs this line):
+This DNS procedure is for the **native Path A wrapper**. Pinned Node installs and Paths B/C use different runtimes; do not add a global `BUN_OPTIONS` export to fix those paths. Refresh the wrapper rather than maintaining a separate preload in your shell profile.
 
-```bash
-mkdir -p ~/.local/share/claude
-echo 'try { require("dns").setServers(["8.8.8.8","8.8.4.4"]); } catch(e){}' > ~/.local/share/claude/setdns.js
-echo 'export BUN_OPTIONS="--preload $HOME/.local/share/claude/setdns.js"' >> ~/.bashrc
-export BUN_OPTIONS="--preload $HOME/.local/share/claude/setdns.js"
-```
-
-**Heads up on your DNS:** the preload points c-ares at Google's public resolvers (`8.8.8.8` / `8.8.4.4`), so Claude Code's own lookups go there instead of a private, VPN, or Pi-hole resolver you may run. The rest of your phone keeps using its normal DNS; this only affects claude. To send claude's lookups to your own nameserver instead, edit the `setServers([...])` list in `~/.local/share/claude/setdns.js`.
+**Heads up on DNS:** the default preload configures the runtime resolver with Google's `8.8.8.8` / `8.8.4.4`. Queries using that resolver do not use your private, VPN-provided, or Pi-hole DNS server. This does not change Android's system DNS or prove that traffic bypasses a VPN tunnel. To change the configured servers, edit `setServers([...])` in `~/.local/share/claude/setdns.js`; refreshes retain a nonempty helper. See [DNS scope and tradeoffs](security-model.md#path-a-forces-google-dns-for-claude-codes-own-lookups).
 
 <details>
 <summary><strong>Why it happens (background, optional)</strong></summary>
@@ -247,7 +226,7 @@ $
 
 **Cause (v2.x):** The in-process auto-updater replaced the pinned 2.1.112 install with a 2.1.113+ build that has no android-arm64 binary. The replaced binary loads but exits before producing output. The `chmod -R a-w` lock applied by the v2.x `install.sh` should prevent this; if the install dir is no longer read-only, the lock was undone.
 
-**Recovery (v2.x):** Re-run a fresh `install.sh`. This now installs the v2.9.0 architecture, which sidesteps the issue entirely. Or, if you must stay on v2.x, manually reinstall 2.1.112:
+**Recovery (v2.x):** On a phone that can run the current native binary, follow the [migration steps](install.md#upgrading-from-a-pinned-v2x-install), which back up your setup before replacing the old install. On Android 8, 9, or 10, use the [pinned fallback](install.md#android-8-9-and-10-pinned-fallback) or [Path B](install.md#path-b-proot-distro-ubuntu) instead. Or, if you must stay on v2.x, manually reinstall 2.1.112:
 
 ```bash
 chmod -R u+w $PREFIX/lib/node_modules/@anthropic-ai/claude-code/ 2>/dev/null
@@ -255,7 +234,7 @@ DISABLE_AUTOUPDATER=1 npm install -g @anthropic-ai/claude-code@2.1.112
 chmod -R a-w $PREFIX/lib/node_modules/@anthropic-ai/claude-code/
 ```
 
-If bare `claude` exits silently after that, confirm `ls -la $PREFIX/lib/node_modules/@anthropic-ai/claude-code` shows `dr-x------`.
+If bare `claude` exits silently after manually reinstalling 2.1.112, confirm `ls -la $PREFIX/lib/node_modules/@anthropic-ai/claude-code` shows `dr-x------`.
 
 ---
 
@@ -276,18 +255,9 @@ or the platform-native optional dependency was not downloaded
 
 **Cause:** Upstream regression introduced in `@anthropic-ai/claude-code` 2.1.113. Versions 2.1.113 and later switched from a bundled `cli.js` JavaScript entry point to a platform-native binary wrapped by an optional-dependency dispatcher; android-arm64 is not in the dispatcher's PLATFORMS map. Tracked upstream at [anthropics/claude-code#50270](https://github.com/anthropics/claude-code/issues/50270).
 
-**Recovery (recommended):** upgrade to v2.9.0:
+**Recovery (recommended):** On a phone that can run the current native binary, follow [Upgrading from a pinned v2.x install](install.md#upgrading-from-a-pinned-v2x-install). Close all Claude sessions first and run the migration from ordinary Termux. It backs up your setup before replacing the old install; do not remove the npm install or delete your settings first.
 
-```bash
-# 1) Remove the v2.x install
-chmod -R u+w $PREFIX/lib/node_modules/@anthropic-ai/claude-code/ 2>/dev/null || true
-rm -rf $PREFIX/lib/node_modules/@anthropic-ai/claude-code/ $PREFIX/bin/claude
-rm -f $HOME/.claude/settings.json   # optional; will be rewritten
-
-# 2) Run the v2.9.0 install.sh
-curl -fsSL https://raw.githubusercontent.com/ferrumclaudepilgrim/claude-code-android/main/install.sh -o install.sh
-bash install.sh
-```
+**Android 8, 9, or 10?** Use the [pinned fallback](install.md#android-8-9-and-10-pinned-fallback) or [Path B](install.md#path-b-proot-distro-ubuntu) instead.
 
 **Recovery (stay on v2.x):**
 
@@ -301,6 +271,22 @@ echo 'export DISABLE_AUTOUPDATER=1' >> ~/.bashrc
 The `chmod -R a-w` was load-bearing under v2.x: the in-process auto-updater re-fetched `latest` on a timer and silently overwrote the install dir. v2.9.0 sidesteps the entire mechanism (`autoUpdates: false` in settings.json + a wrapper at `$PREFIX/bin/claude`, where `$PREFIX` is Termux's package prefix directory, outside the npm tree).
 
 **Path B (proot-distro Ubuntu) was never affected** by this regression. Inside the Ubuntu guest, `process.platform === 'linux'` matches the upstream `linux-arm64` native binary directly.
+
+---
+
+### Termux package download hangs or says "Failed to fetch"
+
+**You see:** `pkg update`, `pkg upgrade`, or an installer step waits for a long time, then prints `Failed to fetch` for a Termux repository URL.
+
+**Cause:** The configured Termux package mirror is slow, unavailable, or unreachable from the current network. This failure occurs before Claude Code is downloaded.
+
+**Recovery:** Stop the stalled command with Ctrl+C if necessary, then run:
+
+```bash
+termux-change-repo
+```
+
+Select another official mirror, let `pkg update` complete, and rerun the installer command from [install.md](install.md#path-a-native-termux). If `termux-change-repo` is missing or package behavior remains inconsistent, confirm that Termux came from an upstream-supported source; see [Termux from Google Play has issues](#termux-from-google-play-has-issues).
 
 ---
 
@@ -334,10 +320,13 @@ Or the auth URL prints to the terminal but nothing happens when you visit it, or
 
 2. If the browser opens but the redirect fails, copy the auth URL manually from the terminal into your browser.
 
-3. If all else fails, try authenticating with a direct API key:
+3. If you choose a direct API key, it uses Console/API billing, separate from a Pro or Max subscription. Review [authentication choices](https://code.claude.com/docs/en/authentication) first. To avoid putting the key in shell history, enter it at a hidden Bash prompt:
    ```bash
-   export ANTHROPIC_API_KEY="your-key-here"
+   read -r -s -p 'Anthropic API key: ' ANTHROPIC_API_KEY
+   printf '\n'
+   export ANTHROPIC_API_KEY
    ```
+   This exports the key for this shell session. Do not paste it into a report or commit it to a project.
 
 **Cause:** Termux has no system browser integration by default. The login redirect URL may not reach Termux because `localhost` inside Termux and `localhost` from the Android browser are not always the same network context.
 
@@ -355,7 +344,7 @@ root@localhost:~# claude
 █
 ```
 
-**Current status:** A TCGETS2 ioctl bug that previously broke stdout in guest distros with glibc 2.41+ was fixed in proot 5.1.107-66 (October 2025). On the devices I have tested (Android 13 and Android 17), proot-distro works with current proot versions (5.1.107-66+). If you are seeing this issue on a different Android version, update proot first:
+**Version check:** A TCGETS2 ioctl bug that previously broke stdout in guest distros with glibc 2.41+ was fixed in proot 5.1.107-66 (October 2025). The [device table](device-compatibility.md#device-results) records this repo's Path B observations and dates; an old environment capture is not a later guest-install test. Start by updating proot in **host Termux**:
 
 ```bash
 pkg upgrade proot proot-distro -y
@@ -426,15 +415,17 @@ Or the Claude Code session simply vanishes and you're back at your shell prompt.
 
 1. Minimize background apps while using Claude Code.
 2. Limit concurrent subagents and child processes.
-3. Enable the developer option to disable the restriction:
+3. If your device exposes it, enable the developer option that disables the child-process restriction:
 
    **Settings -> Developer Options -> Disable child process restrictions** (toggle on)
 
    If you don't see Developer Options, go to **Settings -> About phone** and tap **Build number** seven times.
 
-**Cause:** Android's phantom process killer. Android limits background processes to approximately 32 across all apps. When Termux spawns multiple Node.js processes (Claude Code, subagents, language servers), the OS silently kills excess processes.
+4. Open Android's app battery settings for Termux and look for **Battery optimization**, **App battery usage**, **Unrestricted**, or **Allow background activity**. Names and locations vary by Android version and manufacturer. If Termux:API is involved, review its companion app separately. Relaxing these limits can increase battery use and heat and is not a guarantee that Android will keep the process alive.
 
-**Session persistence with tmux:** Install tmux (`pkg install tmux`) and run Claude Code inside a tmux session (`tmux new -s claude`). If Android kills the Termux app, your session survives. Reopen Termux and run `tmux attach -t claude` to resume.
+**Cause:** Android can stop work for more than one reason. Its phantom process controls can kill excess child processes, while battery and background policies can suspend or kill the Termux app. The **Disable child process restrictions** option addresses the former, not battery optimization.
+
+**Session persistence with tmux:** Install tmux (`pkg install tmux`) and run Claude Code inside a tmux session (`tmux new -s claude`). This can preserve a session when you close the terminal window or Android recreates its activity. It cannot preserve the session if Android kills the Termux process or the phone reboots. If the process is still alive, reopen Termux and run `tmux attach -t claude` to resume.
 
 ---
 
@@ -468,9 +459,13 @@ Error: EMFILE, too many open files
 
 **You see:** You run your own `npm install -g <some-package>` and npm appears to finish without complaint, but the package is not actually installed. This is for your own npm work; `install.sh` in this repo handles the Claude Code install correctly without any extra setup.
 
-**Fix:** Run `npm install` with `bash install.sh`'s shell environment, or call npm from a shell where the install script's environment has already been applied. If you are installing packages outside Termux's default location, you may need to set `npm config set prefix` to a writable path you own.
+**Check the temporary directory in ordinary Termux.** If npm is using an unwritable location, set a Termux-owned temporary path and retry the package you meant to install:
 
-**Cause:** npm needs a writable working directory at install time. Termux's default shell environment provides one when set up by this repo's `install.sh`. If you launch npm from a stripped environment (cron, a shell with `env -i`, a non-interactive session that did not source your shell profile), npm may fail to stage files and exit quietly. This is generic Termux/npm behaviour; it does not affect the Claude Code install path documented in this repo.
+```bash
+export TMPDIR="$PREFIX/tmp"
+```
+
+This matches the pinned installer's temporary-directory setting. `install.sh` uses the native binary and does not set up an npm shell environment. A silent failure can have other causes; retain npm's output and exit status rather than assuming this fixes every package. If you set a custom npm prefix, confirm that it is a writable directory you own.
 
 ---
 
@@ -486,13 +481,11 @@ Search tools (Grep, Glob) and slash commands that depend on them crash immediate
 
 **Affected:** v2.x installs only. On v2.9.0, the linux-arm64 native binary ships `vendor/ripgrep/arm64-linux/rg` and reports `process.platform === 'linux'`, so it finds its bundled rg on the first try. No env var or symlink needed.
 
-**Recovery (v2.x / pinned 2.1.112):** Install system ripgrep and symlink it onto the exact vendored path Claude Code looks for. This is what `scripts/fix-ripgrep.sh` does:
+**Recovery (v2.x / pinned 2.1.112):** Run `scripts/fix-ripgrep.sh`. It installs system ripgrep and symlinks it onto the exact vendored path Claude Code looks for, unlocking and relocking the folder it writes to as it goes:
 
 ```bash
-pkg install ripgrep -y
-VEN="$PREFIX/lib/node_modules/@anthropic-ai/claude-code/vendor/ripgrep/arm64-android"
-mkdir -p "$VEN"
-ln -sf "$(command -v rg)" "$VEN/rg"
+curl -fsSL https://raw.githubusercontent.com/ferrumclaudepilgrim/claude-code-android/main/scripts/fix-ripgrep.sh -o fix-ripgrep.sh
+bash fix-ripgrep.sh
 ```
 
 Re-run after a Claude Code update; the symlink does not survive updates.
@@ -539,25 +532,25 @@ Voice mode requires SoX for audio recording. Install SoX manually:
 
 The `/voice` command refuses to start.
 
-**Fix:**
+**Fix for that missing-recorder error (ordinary Termux):**
 
 ```bash
-pkg install sox termux-api -y
+pkg install sox
 ```
 
-Then grant microphone permission to Termux when Android prompts you (or manually via **Settings -> Apps -> Termux -> Permissions -> Microphone**).
+Installing SoX supplies the `rec` recorder; it does not prove that Android is delivering microphone audio. Current [Claude dictation documentation](https://code.claude.com/docs/en/voice-dictation) describes a native Linux recorder with `arecord` or SoX fallback. Android is still a community setup, so check your own installed version and capture path.
 
-**Note:** Voice mode functionality may still be limited on Android even after installing SoX and granting permissions. Audio routing on Android does not always cooperate with command-line tools.
+**Check microphone permission separately.** For the supported matching-source Termux setup, the [Termux:API companion declares microphone permission](https://github.com/termux/termux-api/blob/master/app/src/main/AndroidManifest.xml) for the shared app identity. Follow [optional Termux:API setup](install.md#termuxapi-explicit-optional-setup), then review **Settings → Apps → Termux:API → Permissions → Microphone**. Menus vary by build; do not assume Termux itself will offer that permission.
 
-**Cause:** SoX (a command-line audio processing tool) is available in Termux (`pkg install sox`) but voice mode also needs microphone access, which requires the Termux:API addon app and Android microphone permissions granted to Termux.
+**Earlier Android 16 failures are not a universal current blocker.** In my [2026-08-15 five-device retest](https://github.com/termux/termux-packages/pull/29074#issuecomment-5304389028), updated packages captured changing microphone audio on all five phones, including the Android 16 S26 Ultra. Those were bounded audio-capture checks, not verification of every Claude `/voice` configuration.
 
-**Android 16 microphone input:** Microphone capture for voice mode is currently broken on Android 16 (the `module-sles-source` audio module does not work there), so voice input may not record. Voice output via `termux-tts-speak` is unaffected and works today. A fix is in progress upstream in termux-packages.
+The [AAudio](https://github.com/termux/termux-packages/pull/29074) and [Oboe](https://github.com/termux/termux-packages/pull/29319) proposals remain open as checked on 2026-10-25; they are alternative audio work, not a required pending fix for every phone. Text-to-speech is a separate feature and does not establish that voice recording works. No new voice tests were performed for this documentation revision.
 
 ---
 
 ### Hooks on Termux native
 
-**Status:** Hooks fire correctly on current Claude Code releases on Termux native (`process.platform === "android"`). SessionStart and PreToolUse hooks with command-type entries and matchers like `Write|Edit|Read|Glob|Grep|Bash` execute as expected.
+**Recorded observation:** SessionStart and PreToolUse command hooks ran in the earlier Termux JavaScript setup. That is separate from current native Path A, which uses a Linux binary. Check hooks on the installation you actually use; a platform label does not establish that a hook ran.
 
 You can verify the platform identifier (informational, not a blocker):
 
@@ -566,7 +559,7 @@ $ node -e "console.log(process.platform)"
 android
 ```
 
-This `node -e` check needs a separate Node install (the pinned `2.1.112` JS path or Termux's own `nodejs`). The Path A native binary reports `process.platform === "linux"` internally and ships no Node, so the check does not apply to it. Hooks fire either way.
+This `node -e` check needs a separate Node install (the pinned `2.1.112` JS path or Termux's own `nodejs`). The Path A native binary reports `process.platform === "linux"` internally and ships no Node, so the check does not apply to it. Hook execution still depends on the interpreter, PATH, and failure policy. For direct scripts on native Path A, use an explicit `bash` invocation as described above.
 
 If your hooks are not firing on Termux:
 
@@ -588,7 +581,7 @@ E: Unable to locate package nodejs
 
 You may also see apt report that a repository "does not have a Release file," which means the build is pointing at a package source it can no longer reach.
 
-**Fix:** Uninstall the current Termux and install from one of these sources:
+**Fix:** Back up your Termux projects and configuration first: uninstalling can erase its private environment. Follow the [source and backup guidance](install.md#if-android-blocks-the-termux-apk), then reinstall from one of these sources:
 
 - [F-Droid](https://f-droid.org/en/packages/com.termux/)
 - [Termux GitHub releases](https://github.com/termux/termux-app/releases) (direct APK, an Android app package file)
@@ -613,24 +606,19 @@ pdftoppm is not installed
 
 The `Read` tool returns this error when you try to read a `.pdf` file, even after running `pkg install poppler`.
 
-**Fix:** Create a `which` shim. Termux doesn't ship a `which` binary, and Claude Code's PDF reader uses `which pdftoppm` to detect the tool:
+**Check the tools in the same environment where Claude runs.** In ordinary Termux, install Poppler and the [packaged `which` command](https://github.com/termux/termux-packages/blob/master/packages/which/build.sh), then check that both resolve:
 
 ```bash
-pkg install poppler
-cat > $PREFIX/bin/which << 'SCRIPT'
-#!/usr/bin/env bash
-for arg in "$@"; do
-  command -v "$arg"
-done
-SCRIPT
-chmod +x $PREFIX/bin/which
+pkg install poppler which
+command -v pdftoppm
+command -v which
 ```
 
-After this, `Read` on PDF files works correctly.
+Restart Claude in that environment and try a non-sensitive PDF. If both commands resolve but `Read` still fails, record your installation path, Claude version, and exact error. These package checks do not prove that every PDF reader/runtime combination works.
 
-Alternatively, `pdftotext` (included with poppler) works without the shim if you only need text extraction: `pdftotext file.pdf -`
+For text extraction alone, Poppler also supplies `pdftotext`: `pdftotext file.pdf -` prints the text to your terminal. Replace `file.pdf` with your own filename.
 
-**Cause:** Termux uses `command -v` rather than `which` for command detection, but Claude Code's PDF reader calls `which pdftoppm` directly. Without a `which` binary on PATH, the check fails and the reader refuses to proceed, even if `pdftoppm` is installed.
+**Why check both?** A missing executable or a different PATH can make tool detection fail even after a package was installed elsewhere. Termux has a real `which` package; do not overwrite its executable with a custom shim. Path B and C need their tools inside Ubuntu or Debian, not only in host Termux.
 
 ---
 
@@ -655,7 +643,7 @@ If you are running it from inside a Claude Code session via the Bash tool, that 
 
 **Cause:** The `claude doctor` command uses the Ink library (a React-based terminal UI renderer) to render its output. Ink requires raw mode stdin. Termux provides raw mode in interactive sessions but not in piped or backgrounded contexts.
 
-**Status:** Cosmetic. `claude doctor` is a diagnostic tool, not required for normal Claude Code operation. This repo ships an equivalent set of Termux/Android-specific checks as a bash script: [`scripts/check-termux-env.sh`](../scripts/check-termux-env.sh).
+**Status:** Cosmetic. `claude doctor` is a diagnostic tool, not required for normal Claude Code operation. This repo ships a separate Termux-side check: [`scripts/check-termux-env.sh`](../scripts/check-termux-env.sh). It is not equivalent to `claude doctor`; it calls `claude --version`, which can trigger wrapper updates. Review its [effects and limits](add-ons/skills.md#check-or-repair-your-setup) before running it.
 
 ---
 
@@ -673,47 +661,24 @@ Known issues filed against the Claude Code repository that affect Android/Termux
 
 ## ADB Wireless Debugging
 
-Setting up ADB over WiFi (pairing errors, dropped connections after screen lock or reboot, and reconnecting) has its own guide: see **[adb-wireless.md](adb-wireless.md)**, which includes a Troubleshooting section for the common pairing and connection problems.
+Setting up ADB over WiFi (pairing errors, dropped connections after screen lock or reboot, and reconnecting) has its own guide: see **[adb-wireless.md](add-ons/adb-wireless.md)**, which includes a Troubleshooting section for the common pairing and connection problems.
 
 ---
 
 ## Path C: AVF (Experimental)
 
-### Android Virtualization Framework (AVF): Experimental, Tested on Pixel
+Path C runs Claude inside Android's Debian VM. The Path A wrapper, blocklist, and cached-binary recovery do not apply there. This path remains experimental; the recorded end-to-end checks cover Pixel 6 and Pixel 10 Pro on Android 17, dated 2026-05-26.
 
-Android 16 introduced a built-in Linux VM via the Android Virtualization Framework (AVF), and Android 17 expanded the Terminal app's user-facing controls. Claude Code has been installed and used for real work inside an AVF VM on Pixel 6 and Pixel 10 Pro running Android 17 (verified 2026-05-26). Path C is **experimental**.
+| What you see | Where to go next |
+|---|---|
+| No Linux development environment toggle | Check [device requirements](avf-guide.md#device-requirements). Availability depends on the build; use A or B if it is absent. |
+| Claude fails inside Debian | Use [Path C maintenance and repair](install.md#update-path-c), inside the VM. Do not run the Termux migration script there. |
+| VM stops when the screen turns off | Check [Keep awake](avf-guide.md#5-screen-off-stability-keep-awake). It uses more battery; `tmux` can preserve a session through terminal recreation, not a VM shutdown. |
+| “VM damaged” or considering a reset | Read [Recovery](avf-guide.md#recovery-and-backups) first. Reset recreates the guest and can delete projects stored inside it; back up what you can before proceeding. |
+| Cellular networking, audio, or Linux tool limitations | Use the [AVF known issues](avf-guide.md#known-issues) and [tested capabilities](avf-guide.md#what-i-observed-working). A working audio command does not establish phone microphone or speaker routing. |
 
-See **[avf-guide.md](avf-guide.md)** for the full setup checklist, the Settings UI walkthrough, ADB hardware bridge, security defaults, and comparison with Path A and Path B.
-
-Inside AVF the official Anthropic installer runs on a real Linux kernel, so the Path A crash and self-heal rollback covered at the top of this guide do not apply here. If a newer claude ever fails to launch in the VM, reinstall with the official installer (`curl -fsSL https://claude.ai/install.sh | bash`) or pin an earlier release.
-
-**What works:**
-- Claude Code installs via the official Anthropic installer (`curl -fsSL https://claude.ai/install.sh | bash`) and completed real tasks during my testing
-- `process.platform === "linux"` (no platform detection issues)
-- Native `/tmp` inside the VM
-- Standard `apt` package management, including systemd updates
-- Memory size, Display resolution, and Keep awake are configurable in the Terminal app's Settings (gear icon) under Advanced
-- ADB wireless debugging from inside the VM provides access to phone sensors, GPS, camera, screenshots, screen recording, input injection, battery state, and WiFi info
-- Audio playback and recording (PulseAudio + VirtIO SoundCard)
-- Headless GUI rendering (Firefox screenshots, automated browser tasks)
-
-**What doesn't work well (yet):**
-- **Screen-off and Activity recreation:** Android 17 mitigates screen-off VM kills with Settings > Advanced > Keep awake (timer up to 1 day, with a battery-life warning in the dialog). The Terminal Activity can still be recreated by some Android lifecycle events (configuration changes, accessibility services). Run long workloads under `tmux` or `nohup` to survive Activity recreation.
-- **SysV IPC (inter-process communication) disabled in kernel:** fio and some Python multiprocessing features do not work (`CONFIG_SYSVIPC` not set). Hard wall.
-- **nftables non-functional:** use iptables-legacy instead
-- **`apt upgrade` can hang:** whiptail text-based UI (TUI) dialogs block non-interactive sessions. Use `DEBIAN_FRONTEND=noninteractive` or kill the blocking process.
-- **"VM damaged" on unclean shutdown:** requires the Recovery > Reset to initial version flow and a re-download of the Debian image
-- **Snapdragon phones not supported:** Qualcomm exposes only protected VMs at EL2 (a privileged ARM processor level). Samsung's One UI 8.5 added Linux Terminal on Exynos S26 / S26+ per Samsung's release notes; not lab-verified here.
-- **No Termux API access:** camera, text-to-speech (TTS), clipboard, GPS, SMS, sensors are not available inside the VM natively (partial access via ADB bridge)
-- **No kernel module loading:** monolithic kernel, `/lib/modules/` is empty
-- **Copy-paste unreliable:** multi-line commands break when pasted into the Terminal app
-
-**Security note:** The stock Android Terminal VM ships with convenience-oriented defaults out of the box: a known default password for the `droid` user, passwordless sudo, and no firewall (SSH is installed but not running). These are Android's own defaults, not settings this project chose. See the [AVF guide's Security Defaults section](avf-guide.md) for the details and hardening steps.
-
-**Networking fix:** Cellular data requires enabling "Unrestricted mobile data usage" in the Terminal app's settings, then restarting the device. WiFi works without this step. (Google Issue Tracker #402523629)
-
-**Using AVF?** The [AVF guide](avf-guide.md) has the full setup checklist and the current known-issues list.
+The [AVF guide](avf-guide.md) owns setup, feature observations, and default-account/SSH hardening. Keep recovery here tied to those procedures rather than following a second installation checklist.
 
 ---
 
-*Last updated: 2026-07-01.*
+*Documentation reviewed: 2026-10-25. Device observations retain their original dates; no new phone tests were performed.*

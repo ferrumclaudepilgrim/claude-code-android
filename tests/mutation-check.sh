@@ -183,6 +183,49 @@ run_mutation "stale staging sweep removed" "install.sh" "wrapper fails" remove_s
 run_mutation "launcher edit applied to install only" "install.sh" "check-sync fails" install_only_edit run_sync_check
 run_mutation "crash-aware final verification removed" "install.sh" "installer fails" remove_crash_aware_final_verification run_installer_check
 
+run_exit_semantics_check() {
+  local name="$1" expected="$2" runner="$3"
+  local index case_dir output rc verdict actual
+  index="${#NAMES[@]}"
+  case_dir="$WORK_ROOT/semantics-$index"
+  output="$WORK_ROOT/semantics-$index.out"
+  mkdir -p "$case_dir/bin" "$case_dir/home"
+  printf '#!/usr/bin/env sh\nprintf "17\\n"\n' > "$case_dir/bin/getprop"
+  chmod +x "$case_dir/bin/getprop"
+  "$runner" "$case_dir" > "$output" 2>&1
+  rc=$?
+  if [ "$rc" -eq "$expected" ]; then
+    actual="failed as required (rc=$rc)"
+    verdict="KILLED"
+  else
+    actual="unexpected rc=$rc"
+    verdict="SURVIVOR"
+    SURVIVORS=$((SURVIVORS + 1))
+  fi
+  NAMES[index]="$name [gate semantics]"
+  EXPECTED[index]="exit $expected"
+  ACTUAL[index]="$actual"
+  VERDICTS[index]="$verdict"
+}
+
+verify_failure_exits_one() {
+  local dir="$1"
+  mkdir -p "$dir/repo/tests"
+  cp "$REPO_ROOT/tests/verify-claims.sh" "$dir/repo/tests/"
+  PATH="$dir/bin:$PATH" HOME="$dir/home" PREFIX="$dir/prefix" \
+    "$BASH_BIN" "$dir/repo/tests/verify-claims.sh"
+}
+
+release_preflight_exits_two() {
+  local dir="$1"
+  cp "$REPO_ROOT/tests/device-release-runner.sh" "$dir/"
+  PATH="$dir/bin:$PATH" HOME="$dir/home" CC_MATRIX_OUT="$dir/out" \
+    "$BASH_BIN" "$dir/device-release-runner.sh" fresh-gate test-device
+}
+
+run_exit_semantics_check "selected evidence FAIL returns nonzero" 1 verify_failure_exits_one
+run_exit_semantics_check "release runner setup error is distinct" 2 release_preflight_exits_two
+
 printf '%-48s | %-15s | %-15s | %s\n' "MUTATION (FILE)" "EXPECTED" "ACTUAL" "VERDICT"
 printf '%s\n' "----------------------------------------------------------------------------------------------------------------"
 for i in "${!NAMES[@]}"; do

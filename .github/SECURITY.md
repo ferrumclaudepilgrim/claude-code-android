@@ -46,7 +46,8 @@ This repo is documentation and install scripts, not a hosted service.
 In scope:
 
 - A script in this repo (`install.sh`, `install-pinned.sh`, `migrate.sh`, anything
-  under `scripts/`; see the [install guide](../docs/install.md) for what each does)
+  under `scripts/`; see the [install guide](../docs/install.md) and the
+  [skills and scripts guide](../docs/add-ons/skills.md) for what each does)
   that could compromise a device or account when run as documented.
 - Documentation that tells users to do something unsafe.
 - A supply-chain or integrity problem in what these scripts download or how they
